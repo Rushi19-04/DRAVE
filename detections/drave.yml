@@ -1,0 +1,6 @@
+project_name: drave-detections
+adapter_target: splunk
+volume_policy_defaults:
+  warning_threshold: 50
+  failure_threshold: 100
+telemetry_schemas_dir: schemas/telemetry

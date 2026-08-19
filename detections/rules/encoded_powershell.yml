@@ -1,6 +1,6 @@
 id: af4a3d12-2b5e-4c6d-8e7f-1a2b3c4d5e6f
 name: Encoded PowerShell Command Line
-description: Detects execution of PowerShell with Base64-encoded command line.
+description: Detects base64 encoded PowerShell commands often used in malicious activity.
 language: sigma
 platform: windows
 severity: high
