@@ -14,6 +14,7 @@ class DetectionRule(BaseModel):
     """
 
     id: str
+    version: int = 1
     name: str
     description: str
     language: str  # "sigma" for MVP

@@ -1,4 +1,5 @@
 id: 33333333-3333-3333-3333-333333333333
+version: 1
 name: Suspicious Admin Activity (LocalGroup Add)
 description: Detects adding a user to the local Administrators group.
 language: sigma

@@ -17,20 +17,20 @@ def generate_pr_comment(
     """Generate the GitHub PR comment markdown for a single rule."""
     
     # 1. Header
-    md = f"## 🛡️ DRAVE Report: `{rule.name}`\n\n"
+    md = f"## :shield: DRAVE Report: `{rule.name}`\n\n"
     
     # 2. Summary Table
     tests_passed = sum(1 for r in test_results if r.status == "PASS")
     total_tests = len(test_results)
     
-    schema_status = "✅ PASS" if schema_report.compatibility_pct == 100 else "⚠️ WARN"
-    tests_status = "✅ PASS" if tests_passed == total_tests and total_tests > 0 else "❌ FAIL"
+    schema_status = ":white_check_mark: PASS" if schema_report.compatibility_pct == 100 else ":warning: WARN"
+    tests_status = ":white_check_mark: PASS" if tests_passed == total_tests and total_tests > 0 else ":x: FAIL"
     
     md += "| Check | Status | Details |\n"
     md += "|-------|--------|---------|\n"
     md += f"| **Schema** | {schema_status} | {schema_report.compatibility_pct}% compatible |\n"
     md += f"| **Tests** | {tests_status} | {tests_passed}/{total_tests} passed |\n"
-    md += f"| **Reason** | ℹ️ INFO | `{reason}` |\n\n"
+    md += f"| **Reason** | :information_source: INFO | `{reason}` |\n\n"
 
     # 3. Schema Details
     if schema_report.error or schema_report.missing_required_fields or schema_report.missing_optional_fields:
@@ -50,7 +50,7 @@ def generate_pr_comment(
         md += "|---------|--------|-------------|\n"
         for tr in test_results:
             diag = tr.diagnostics.get('error_msg', '')
-            status_icon = "✅" if tr.status == "PASS" else "❌"
+            status_icon = ":white_check_mark:" if tr.status == "PASS" else ":x:"
             md += f"| `{tr.test_id}` | {status_icon} {tr.status} | {diag} |\n"
         md += "\n</details>\n\n"
 

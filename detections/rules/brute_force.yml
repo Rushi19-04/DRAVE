@@ -1,4 +1,5 @@
 id: 11111111-1111-1111-1111-111111111111
+version: 1
 name: Potential Brute Force (Failed Logon)
 description: Detects failed logon attempts (EventID 4625).
 language: sigma
