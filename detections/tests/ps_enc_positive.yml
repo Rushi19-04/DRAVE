@@ -1,0 +1,9 @@
+test_id: test-ps-enc-01
+detection_id: af4a3d12-2b5e-4c6d-8e7f-1a2b3c4d5e6f
+type: positive
+input_telemetry:
+  EventID: 4688
+  Image: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+  CommandLine: 'powershell.exe -enc SGVsbG8='
+expected:
+  alert: true

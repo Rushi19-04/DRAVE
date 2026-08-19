@@ -1,0 +1,9 @@
+test_id: test-cred-01
+detection_id: 22222222-2222-2222-2222-222222222222
+type: positive
+input_telemetry:
+  EventID: 4688
+  Image: 'C:\Sysinternals\procdump.exe'
+  CommandLine: 'procdump.exe -ma lsass.exe lsass.dmp'
+expected:
+  alert: true

@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Windows Process Creation (EventID 4688)",
+  "type": "object",
+  "properties": {
+    "EventID": {
+      "type": "integer"
+    },
+    "TimeCreated": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "Computer": {
+      "type": "string"
+    },
+    "Image": {
+      "type": "string"
+    },
+    "CommandLine": {
+      "type": "string"
+    },
+    "User": {
+      "type": "string"
+    },
+    "ParentImage": {
+      "type": "string"
+    },
+    "ParentCommandLine": {
+      "type": "string"
+    }
+  },
+  "required": ["EventID", "Image", "CommandLine"]
+}

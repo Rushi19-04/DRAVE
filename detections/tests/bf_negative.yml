@@ -1,0 +1,13 @@
+test_id: test-bf-02
+detection_id: 11111111-1111-1111-1111-111111111111
+type: negative
+input_telemetry:
+  - EventID: 4625
+    TargetUserName: "admin"
+  - EventID: 4625
+    TargetUserName: "admin"
+  - EventID: 4624
+    TargetUserName: "admin"
+expected:
+  alert: true
+  max_matches: 2

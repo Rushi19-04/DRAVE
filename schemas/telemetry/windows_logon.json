@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Windows Logon (EventID 4624, 4625)",
+  "type": "object",
+  "properties": {
+    "EventID": { "type": "integer" },
+    "LogonType": { "type": "integer" },
+    "TargetUserName": { "type": "string" },
+    "IpAddress": { "type": "string" },
+    "WorkstationName": { "type": "string" },
+    "Status": { "type": "string" }
+  },
+  "required": ["EventID", "TargetUserName"]
+}

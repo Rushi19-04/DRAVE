@@ -1,0 +1,27 @@
+id: 11111111-1111-1111-1111-111111111111
+name: Potential Brute Force (Failed Logon)
+description: Detects failed logon attempts (EventID 4625).
+language: sigma
+platform: windows
+severity: medium
+author: drave-demo
+created_at: 2025-01-01T00:00:00Z
+updated_at: 2025-01-01T00:00:00Z
+attack_mappings:
+  - T1110
+known_limitations: >
+  Temporal aggregation (e.g. 5 failures within 10 minutes) is not currently validated by the in-memory adapter.
+  The test cases assert the rule triggers the required number of times across a list of events, but the temporal link is not evaluated natively.
+  Real aggregation validation will be revisited in Phase L with the Splunk adapter.
+query: |
+  title: Potential Brute Force (Failed Logon)
+  id: 11111111-1111-1111-1111-111111111111
+  status: test
+  logsource:
+      category: logon
+      product: windows
+  detection:
+      selection:
+          EventID: 4625
+      condition: selection
+  level: medium

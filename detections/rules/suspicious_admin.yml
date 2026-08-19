@@ -1,0 +1,27 @@
+id: 33333333-3333-3333-3333-333333333333
+name: Suspicious Admin Activity (LocalGroup Add)
+description: Detects adding a user to the local Administrators group.
+language: sigma
+platform: windows
+severity: high
+author: drave-demo
+created_at: 2025-01-01T00:00:00Z
+updated_at: 2025-01-01T00:00:00Z
+attack_mappings:
+  - T1098
+query: |
+  title: Suspicious Admin Activity (LocalGroup Add)
+  id: 33333333-3333-3333-3333-333333333333
+  status: test
+  logsource:
+      category: process_creation
+      product: windows
+  detection:
+      selection:
+          Image|endswith: '\net.exe'
+          CommandLine|contains|all:
+              - 'localgroup'
+              - 'administrators'
+              - '/add'
+      condition: selection
+  level: high

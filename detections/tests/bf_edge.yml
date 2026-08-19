@@ -1,0 +1,17 @@
+test_id: test-bf-03
+detection_id: 11111111-1111-1111-1111-111111111111
+type: edge
+input_telemetry:
+  - EventID: "4625"
+    TargetUserName: "admin"
+  - EventID: "4625"
+    TargetUserName: "admin"
+  - EventID: "4625"
+    TargetUserName: "admin"
+  - EventID: "4625"
+    TargetUserName: "admin"
+  - EventID: "4625"
+    TargetUserName: "admin"
+expected:
+  alert: true
+  min_matches: 5

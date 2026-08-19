@@ -1,0 +1,45 @@
+[project]
+name = "drave"
+version = "0.1.0"
+description = "Detection Rule Analysis, Versioning, and Evaluation"
+readme = "README.md"
+authors = [
+    { name = "Rushi19-04", email = "bhogalerushikesh3@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "gitpython>=3.1.59",
+    "jsonschema>=4.26.0",
+    "pydantic>=2.13.4",
+    "pysigma>=1.5.0",
+    "rich>=15.0.0",
+    "ruamel-yaml>=0.19.1",
+    "typer>=0.27.1",
+]
+
+[project.scripts]
+drave = "cli.main:app"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+module-name = "core"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.15.4",
+    "freezegun>=1.5.5",
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::pytest.PytestCollectionWarning",
+]
+
