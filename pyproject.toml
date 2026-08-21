@@ -8,13 +8,20 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.141.1",
     "gitpython>=3.1.59",
+    "httpx>=0.28.1",
     "jsonschema>=4.26.0",
+    "psycopg2-binary>=2.9.12",
     "pydantic>=2.13.4",
     "pysigma>=1.5.0",
+    "pysigma-backend-splunk>=2.1.0",
     "rich>=15.0.0",
     "ruamel-yaml>=0.19.1",
+    "splunk-sdk>=2.1.1",
+    "sqlmodel>=0.0.39",
     "typer>=0.27.1",
+    "uvicorn>=0.52.4",
 ]
 
 [project.scripts]

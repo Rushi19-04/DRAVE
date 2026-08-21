@@ -25,7 +25,7 @@ query: |
       product: windows
   detection:
       selection_process:
-          FakeImage_Incompatible|endswith:
+          Image|endswith:
               - '\powershell.exe'
               - '\pwsh.exe'
       selection_encoded:

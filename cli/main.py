@@ -1045,5 +1045,96 @@ def ci_check(
         
     console.print(f"\n[bold green]CI Check Passed! Report saved to {out}[/bold green]")
 
+@app.command()
+def deploy(
+    rule_file: str = typer.Argument(..., help="Path to the rule YAML file to deploy"),
+    target: str = typer.Option("splunk", help="SIEM target to deploy to (e.g., splunk)")
+):
+    """Deploy a detection rule to a SIEM (Tier 3 Action)."""
+    import ruamel.yaml
+    from datetime import datetime
+    import uuid
+    import getpass
+    
+    from core.detection.models import DetectionRule
+    from adapters.splunk.adapter import SplunkAdapter
+    from core.deployment.verify import verify_deployment
+    from core.deployment.auto_rollback import attempt_auto_rollback
+    from core.versioning.manifest import DeploymentManifest
+    
+    yaml = ruamel.yaml.YAML(typ="safe")
+    path = Path(rule_file)
+    if not path.exists():
+        console.print(f"[red]Error: File {rule_file} not found.[/red]")
+        raise typer.Exit(1)
+        
+    data = yaml.load(path.read_text(encoding="utf-8"))
+    try:
+        rule = DetectionRule(**data)
+    except Exception as e:
+        console.print(f"[red]Error parsing rule: {e}[/red]")
+        raise typer.Exit(1)
+        
+    if target.lower() != "splunk":
+        console.print(f"[red]Unsupported target: {target}[/red]")
+        raise typer.Exit(1)
+        
+    console.print("\n[bold yellow]! TIER 3 ACTION: SIEM DEPLOYMENT ![/bold yellow]")
+    console.print(f"You are about to deploy the following rule to [bold]{target.upper()}[/bold]:")
+    console.print(f"  - [cyan]Rule Name:[/cyan] {rule.name}")
+    console.print(f"  - [cyan]Detection ID:[/cyan] {rule.id}")
+    console.print(f"  - [cyan]Version:[/cyan] {rule.version}")
+    console.print("\nThis action requires explicit human sign-off.")
+    
+    confirm = typer.prompt(f"Type the detection ID ({rule.id}) to confirm deployment")
+    
+    if confirm != rule.id:
+        console.print("\n[red]Deployment aborted: Confirmation did not match detection ID.[/red]")
+        raise typer.Exit(1)
+        
+    # Log the approval
+    user = getpass.getuser()
+    manifest = DeploymentManifest(
+        deployment_id=str(uuid.uuid4()),
+        detection_id=rule.id,
+        git_commit="HEAD",  # Mocked for CLI demo
+        version=rule.version,
+        target_siem=target,
+        timestamp=datetime.utcnow(),
+        status="pending",
+        requested_by=user,
+        approved_by=user,
+        reason="Manual deployment via CLI"
+    )
+    
+    console.print(f"\n[green]Deployment authorized by {user}. Logged to manifest ({manifest.deployment_id}).[/green]")
+    
+    adapter = SplunkAdapter()
+    console.print("Deploying to Splunk...")
+    
+    success = adapter.deploy(rule)
+    if not success:
+        console.print("[red]Deployment failed at adapter level.[/red]")
+        manifest.status = "failed"
+        raise typer.Exit(1)
+        
+    console.print("Running post-deployment verification (smoke test)...")
+    verified = verify_deployment(rule, adapter)
+    
+    if verified:
+        console.print("[bold green]Deployment and verification successful![/bold green]")
+        manifest.status = "success"
+    else:
+        console.print("[bold red]Verification failed! Smoke test returned no match.[/bold red]")
+        console.print("[yellow]Triggering automated rollback...[/yellow]")
+        
+        rollback_success = attempt_auto_rollback(rule.id, rule_path=rule_file)
+        if rollback_success:
+            manifest.status = "rollback_success"
+        else:
+            manifest.status = "rollback_failed"
+            console.print("[bold red]CRITICAL: Rollback failed. Manual intervention required.[/bold red]")
+            raise typer.Exit(1)
+
 if __name__ == "__main__":
     app()
