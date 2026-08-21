@@ -1,0 +1,9 @@
+{
+    "EventID": 4625,
+    "TargetUserName": "admin",
+    "LogonType": 3,
+    "IpAddress": "10.0.0.50",
+    "WorkstationName": "SCAN-HOST",
+    "Status": "0xC000006D",
+    "SubStatus": "0xC0000064"
+}

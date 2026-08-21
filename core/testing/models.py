@@ -37,6 +37,7 @@ class TestCase(BaseModel):
     type: TestType
     input_telemetry: dict[str, Any] | list[dict[str, Any]]
     expected: ExpectedResult
+    ground_truth: Literal["true_positive", "false_positive"] | None = None
 
 
 class TestResult(BaseModel):
@@ -51,3 +52,6 @@ class TestResult(BaseModel):
     timestamp: str
     status: Literal["PASS", "FAIL", "ERROR", "SKIPPED"]
     diagnostics: dict[str, Any] = {}
+    true_positive: int = 0
+    false_positive: int = 0
+    unknown: int = 0

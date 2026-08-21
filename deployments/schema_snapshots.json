@@ -1,0 +1,12 @@
+{
+  "af4a3d12-2b5e-4c6d-8e7f-1a2b3c4d5e6f": [
+    "CommandLine",
+    "Computer",
+    "EventID",
+    "Image",
+    "ParentCommandLine",
+    "ParentImage",
+    "TimeCreated",
+    "User"
+  ]
+}

@@ -1,0 +1,59 @@
+name: DRAVE CI
+
+on:
+  pull_request:
+    paths:
+      - 'detections/rules/**.yml'
+      - 'detections/rules/**.yaml'
+
+jobs:
+  ci-check:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv pip install --system -r pyproject.toml
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            detections/rules/**.yml
+            detections/rules/**.yaml
+
+      - name: Run DRAVE CI Check
+        id: run-drave
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          python cli/main.py ci-check ${{ steps.changed-files.outputs.all_changed_files }} --out drave_report.md
+        continue-on-error: true
+
+      - name: Post PR Comment
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: drave_report.md
+          edit-mode: replace
+
+      - name: Fail if DRAVE Check Failed
+        if: steps.run-drave.outcome != 'success'
+        run: exit 1

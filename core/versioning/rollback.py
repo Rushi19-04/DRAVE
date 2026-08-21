@@ -12,6 +12,7 @@ from core.testing.storage import LocalJsonlStorage
 from adapters.sigma.inmemory import SigmaInMemoryAdapter
 from core.versioning.lkg import LKGTracker
 from core.versioning.manifest import DeploymentManifest
+from core.versioning.git_utils import extract_yaml_from_commit
 
 
 class RollbackError(Exception):
@@ -22,23 +23,10 @@ class RollbackCoordinator:
     """Coordinates detection rollback via git blob extraction and test verification."""
     
     def __init__(self, repo_path: str = "."):
-        self.repo = Repo(repo_path)
+        self.repo_path = repo_path
         self.lkg_tracker = LKGTracker()
         self.storage = LocalJsonlStorage()
         self.adapter = SigmaInMemoryAdapter()
-        
-    def _extract_yaml_from_commit(self, commit_hash: str, file_path: str) -> dict:
-        """Dynamically extract a YAML blob from a historical commit without checking out."""
-        commit = self.repo.commit(commit_hash)
-        try:
-            # Git paths use forward slashes
-            tree_path = file_path.replace("\\", "/")
-            blob = commit.tree / tree_path
-            content = blob.data_stream.read().decode("utf-8")
-            yaml = ruamel.yaml.YAML(typ="safe")
-            return yaml.load(content)
-        except KeyError:
-            raise RollbackError(f"File {file_path} not found in commit {commit_hash}")
             
     def orchestrate_rollback(
         self, 
@@ -60,7 +48,7 @@ class RollbackCoordinator:
         
         # 2. Extract historical rule and run tests
         try:
-            rule_data = self._extract_yaml_from_commit(lkg_commit, rule_path)
+            rule_data = extract_yaml_from_commit(self.repo_path, lkg_commit, rule_path)
             rule = DetectionRule(**rule_data)
         except Exception as e:
             raise RollbackError(f"Failed to load rule from LKG commit: {e}")
@@ -71,8 +59,12 @@ class RollbackCoordinator:
         
         for tp in test_paths:
             try:
-                test_data = self._extract_yaml_from_commit(lkg_commit, tp)
+                test_data = extract_yaml_from_commit(self.repo_path, lkg_commit, tp)
                 test_case = TestCase(**test_data)
+                
+                # Only run tests that belong to this detection
+                if test_case.detection_id != detection_id:
+                    continue
                 
                 # Re-run validation (Step 31 Explicit requirement)
                 res = run_test(rule, test_case, self.adapter)

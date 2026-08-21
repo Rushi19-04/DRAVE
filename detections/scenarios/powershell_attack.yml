@@ -1,0 +1,7 @@
+id: scenario-ps-encoded-01
+name: Encoded PowerShell Attack Replay
+technique: T1059.001
+telemetry:
+  - "fixtures/powershell/attack.json"
+expected_detections:
+  - af4a3d12-2b5e-4c6d-8e7f-1a2b3c4d5e6f

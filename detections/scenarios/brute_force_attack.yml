@@ -1,0 +1,7 @@
+id: scenario-brute-force-01
+name: Brute Force Logon Attack Replay
+technique: T1110.001
+telemetry:
+  - "fixtures/brute_force/attack.json"
+expected_detections:
+  - 11111111-1111-1111-1111-111111111111

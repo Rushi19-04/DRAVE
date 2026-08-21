@@ -1,0 +1,9 @@
+{
+    "EventID": 4625,
+    "TargetUserName": "admin",
+    "LogonType": 10,
+    "IpAddress": "192.168.1.100",
+    "WorkstationName": "ATTACKER-PC",
+    "Status": "0xC000006D",
+    "SubStatus": "0xC0000064"
+}

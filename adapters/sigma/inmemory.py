@@ -59,14 +59,19 @@ class SigmaInMemoryAdapter(DetectionAdapter):
         Walks the parsed condition tree and checks each leaf node
         against the telemetry values.
         """
+        import time
+        start = time.perf_counter()
+        
         # A Sigma rule can have multiple conditions (rare); we evaluate
         # all of them and return True if *any* condition matches (OR).
         for condition in compiled.detection.parsed_condition:
             tree = condition.parsed
             if self._evaluate_node(tree, telemetry):
-                return {"match": True, "matched_condition": str(condition.condition)}
+                duration = (time.perf_counter() - start) * 1000.0
+                return {"match": True, "matched_condition": str(condition.condition), "run_duration_ms": duration}
 
-        return {"match": False, "matched_condition": None}
+        duration = (time.perf_counter() - start) * 1000.0
+        return {"match": False, "matched_condition": None, "run_duration_ms": duration}
 
     def normalize_result(self, raw_result: dict[str, Any]) -> dict[str, Any]:
         """Already normalized — pass through."""

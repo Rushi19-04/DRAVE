@@ -1,0 +1,6 @@
+# DRAVE Global Configuration
+# Defines project-level defaults.
+
+volume_policy:
+  warning_threshold: 100
+  failure_threshold: 1000

@@ -24,5 +24,7 @@ class DetectionRule(BaseModel):
     author: str
     created_at: datetime
     updated_at: datetime
+    tags: list[str] = []
     attack_mappings: list[str] = []
+    volume_policy: dict[str, int] | None = None
     known_limitations: str | None = None

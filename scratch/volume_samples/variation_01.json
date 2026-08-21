@@ -1,0 +1,7 @@
+{
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\pwsh.exe",
+    "CommandLine": "pwsh.exe -enc SGVsbG8gV29ybGQ=",
+    "ParentImage": "C:\\Windows\\explorer.exe",
+    "User": "CORP\\jsmith"
+}
