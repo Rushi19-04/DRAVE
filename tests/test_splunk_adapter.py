@@ -41,8 +41,9 @@ def test_splunk_adapter_compile(sample_rule):
 
 def test_splunk_adapter_execute(sample_rule):
     adapter = SplunkAdapter()
-    # Execute simply returns the telemetry as a mock
-    assert adapter.execute("fake_spl", {"foo": "bar"}) == {"foo": "bar"}
+    adapter.deploy(sample_rule)
+    spl = adapter.get_deployed_spl(sample_rule.id)
+    assert adapter.execute(spl, {"foo": "bar"}) == {"foo": "bar"}
 
 def test_splunk_adapter_deploy(sample_rule):
     adapter = SplunkAdapter()

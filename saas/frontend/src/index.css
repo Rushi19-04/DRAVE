@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0B0F19;
+  --color-surface: #1A2332;
+  --color-border: #2A3441;
+  --color-primary: #3B82F6;
+  --color-neonBlue: #00F0FF;
+  --color-neonPurple: #BD00FF;
+  --color-neonGreen: #39FF14;
+  --color-neonRed: #FF003C;
+}
+
+@utility bg-glass-gradient {
+  background-image: linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+}
+
+@layer base {
+  body {
+    @apply bg-background text-gray-100 font-sans antialiased min-h-screen selection:bg-neonBlue selection:text-black;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-glass-gradient backdrop-blur-xl border border-white/5 shadow-2xl;
+  }
+  
+  .glass-card {
+    @apply bg-surface/80 backdrop-blur-md border border-white/5 rounded-xl shadow-lg hover:shadow-neonBlue/10 transition-all duration-300;
+  }
+  
+  .neon-text-blue {
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+  }
+  
+  .neon-text-green {
+    text-shadow: 0 0 10px rgba(57, 255, 20, 0.5);
+  }
+}
