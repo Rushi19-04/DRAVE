@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Activity, ShieldCheck, Zap } from 'lucide-react';
-import { useAuth } from '@clerk/clerk-react';
+import { Activity, ShieldCheck, Zap, Plus } from 'lucide-react';
+import { useAuth, UserButton } from '@clerk/clerk-react';
 import { RuleCard } from './RuleCard';
+import { CreateRuleModal } from './CreateRuleModal';
 
 export function Dashboard() {
   const { getToken } = useAuth();
@@ -9,8 +10,9 @@ export function Dashboard() {
   const [rules, setRules] = useState<any[]>([]);
   const [health, setHealth] = useState({ average_health: 0, total_records: 0 });
   const [loading, setLoading] = useState(true);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  const fetchDashboardData = async () => {
+  const loadData = async () => {
     try {
       const token = await getToken();
       const headers = {
@@ -32,7 +34,7 @@ export function Dashboard() {
   };
 
   useEffect(() => {
-    fetchDashboardData();
+    loadData();
   }, []);
 
   const handleDeploy = async (ruleId: string, confirmationId: string) => {
@@ -87,6 +89,26 @@ export function Dashboard() {
             </div>
           </div>
           
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setIsCreateModalOpen(true)}
+              className="flex items-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
+            >
+              <Plus className="w-4 h-4" />
+              Create Rule
+            </button>
+            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center overflow-hidden border border-slate-700">
+              <UserButton 
+                appearance={{
+                  elements: {
+                    userButtonAvatarBox: "w-full h-full",
+                    userButtonTrigger: "focus:shadow-none focus:outline-none"
+                  }
+                }}
+              />
+            </div>
+          </div>
+
           <div className="bg-surface/50 border border-white/5 rounded-xl p-4 min-w-[140px] text-center shadow-[0_0_15px_rgba(57,255,20,0.1)]">
             <p className="text-gray-400 text-sm font-medium mb-1">Global Health</p>
             <div className="text-3xl font-black flex items-center justify-center gap-2 neon-text-green text-neonGreen">
@@ -113,6 +135,17 @@ export function Dashboard() {
           )}
         </div>
       </div>
+
+      {isCreateModalOpen && (
+        <CreateRuleModal 
+          apiBaseUrl={API_BASE_URL}
+          onClose={() => setIsCreateModalOpen(false)}
+          onSuccess={() => {
+            setIsCreateModalOpen(false);
+            loadData(); // Refresh the list
+          }}
+        />
+      )}
     </div>
   );
 }
