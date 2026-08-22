@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Shield, Activity, Calendar, Terminal } from 'lucide-react';
+import { useState } from 'react';
+import { Shield, Calendar, Terminal } from 'lucide-react';
 import { DeploymentModal } from './DeploymentModal';
 
 interface RuleCardProps {

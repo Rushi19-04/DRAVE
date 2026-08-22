@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Activity, ShieldCheck, Zap } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
 import { RuleCard } from './RuleCard';

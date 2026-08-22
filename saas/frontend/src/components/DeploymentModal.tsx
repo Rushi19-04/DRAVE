@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, ShieldAlert, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 
 interface DeploymentModalProps {
@@ -20,7 +20,7 @@ export function DeploymentModal({ ruleId, ruleName, onClose, onDeploy }: Deploym
     setLoading(true);
     setResult(null);
     try {
-      const response = await onDeploy(confirmation);
+      await onDeploy(confirmation);
       setResult({ status: 'success' });
     } catch (err: any) {
       setResult({ status: 'error', detail: err.message || 'Deployment failed' });

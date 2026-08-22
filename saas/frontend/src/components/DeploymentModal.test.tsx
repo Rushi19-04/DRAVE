@@ -1,6 +1,5 @@
-import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { DeploymentModal } from './DeploymentModal';
 
 test('Deployment button is disabled until exact detection ID is typed', async () => {

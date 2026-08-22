@@ -1,4 +1,3 @@
-import React from 'react';
 import { Dashboard } from './components/Dashboard';
 import { SignedIn, SignedOut, SignIn, UserButton } from '@clerk/clerk-react';
 
