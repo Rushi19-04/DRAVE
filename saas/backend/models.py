@@ -38,3 +38,13 @@ class DeploymentLog(DeploymentManifest, SQLModel, table=True):
     deployment_id: str = Field(primary_key=True)
     tenant_id: str = Field(index=True)
     status: str = Field(index=True)  # Override Literal for SQL compatibility
+
+class CIApiKey(SQLModel, table=True):
+    """Database-backed multi-tenant API keys."""
+    id: str = Field(primary_key=True)
+    tenant_id: str = Field(index=True)
+    key_hash: str = Field(index=True)
+    label: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_used_at: Optional[datetime] = None
+    revoked: bool = Field(default=False)

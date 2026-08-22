@@ -8,7 +8,13 @@ from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 import base64
+import hashlib
+from datetime import datetime
+from sqlmodel import Session, select
+from fastapi import Depends
 from saas.backend.config import settings
+from saas.backend.database import get_session
+from saas.backend.models import CIApiKey
 
 CLERK_ISSUER_URL = settings.clerk_issuer_url.rstrip("/")
 # We fetch the JWKS once and cache it in memory for this prototype
@@ -46,12 +52,21 @@ def get_rsa_public_key(jwk: dict) -> str:
     )
     return pem
 
-def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Security(security)):
+def get_current_user(
+    request: Request, 
+    credentials: HTTPAuthorizationCredentials = Security(security),
+    session: Session = Depends(get_session)
+):
     api_key = request.headers.get("X-API-Key")
     if api_key:
-        if settings.ci_api_key and settings.ci_tenant_id and api_key == settings.ci_api_key:
-            return settings.ci_tenant_id
-        raise HTTPException(status_code=401, detail="Invalid API Key")
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        record = session.exec(select(CIApiKey).where(CIApiKey.key_hash == key_hash).where(CIApiKey.revoked == False)).first()
+        if record:
+            record.last_used_at = datetime.utcnow()
+            session.add(record)
+            session.commit()
+            return record.tenant_id
+        raise HTTPException(status_code=401, detail="Invalid or revoked API Key")
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Not authenticated")

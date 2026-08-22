@@ -9,7 +9,9 @@ from sqlmodel import Session, select
 from pydantic import BaseModel
 
 from saas.backend.database import get_session
-from saas.backend.models import RuleEntity, HealthRecord, DeploymentLog
+from saas.backend.models import RuleEntity, HealthRecord, DeploymentLog, CIApiKey
+import secrets
+import hashlib
 
 # Import existing core modules
 from core.detection.models import DetectionRule
@@ -157,3 +159,55 @@ def get_health(
         
     avg = sum(r.score for r in records) / len(records)
     return {"average_health": round(avg, 2), "total_records": len(records)}
+
+class CIApiKeyCreate(BaseModel):
+    label: str
+
+class CIApiKeyResponse(BaseModel):
+    id: str
+    label: str
+    created_at: datetime
+    last_used_at: datetime | None
+    revoked: bool
+    raw_key: str | None = None
+
+@router.post("/ci-keys", response_model=CIApiKeyResponse, tags=["API Keys"])
+def create_ci_key(
+    req: CIApiKeyCreate,
+    session: Session = Depends(get_tenant_session),
+    user: str = Depends(get_current_user)
+):
+    raw_key = secrets.token_hex(32)
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    
+    api_key = CIApiKey(
+        id=str(uuid.uuid4()),
+        tenant_id=user,
+        key_hash=key_hash,
+        label=req.label
+    )
+    session.add(api_key)
+    session.commit()
+    session.refresh(api_key)
+    
+    return {**api_key.model_dump(), "raw_key": raw_key}
+
+@router.get("/ci-keys", response_model=List[CIApiKeyResponse], tags=["API Keys"])
+def list_ci_keys(
+    session: Session = Depends(get_tenant_session)
+):
+    keys = session.exec(select(CIApiKey).where(CIApiKey.revoked == False)).all()
+    return [{**k.model_dump(), "raw_key": None} for k in keys]
+
+@router.delete("/ci-keys/{key_id}", tags=["API Keys"])
+def revoke_ci_key(
+    key_id: str,
+    session: Session = Depends(get_tenant_session)
+):
+    api_key = session.exec(select(CIApiKey).where(CIApiKey.id == key_id)).first()
+    if not api_key:
+        raise HTTPException(status_code=404, detail="API Key not found")
+    api_key.revoked = True
+    session.add(api_key)
+    session.commit()
+    return {"status": "revoked"}

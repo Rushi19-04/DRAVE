@@ -18,10 +18,6 @@ class Settings(BaseSettings):
     # CORS
     frontend_urls: str = "http://localhost:5173,http://127.0.0.1:5173"
 
-    # CI/CD Automation (Server-Side Tenant Mapping)
-    ci_api_key: str | None = None
-    ci_tenant_id: str | None = None
-
     model_config = SettingsConfigDict(
         env_file=ENV_PATH,
         env_file_encoding="utf-8",

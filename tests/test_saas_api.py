@@ -14,7 +14,11 @@ from core.detection.models import DetectionRule
 def override_get_current_user():
     return "test_user_from_token"
 
-app.dependency_overrides[get_current_user] = override_get_current_user
+@pytest.fixture(autouse=True)
+def apply_auth_override():
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 def test_ingest_rule(client, sample_rule):
     response = client.post("/api/v1/rules", json={"rule": sample_rule, "score": 85.0})
