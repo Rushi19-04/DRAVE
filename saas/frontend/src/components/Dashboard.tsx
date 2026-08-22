@@ -5,6 +5,7 @@ import { RuleCard } from './RuleCard';
 
 export function Dashboard() {
   const { getToken } = useAuth();
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
   const [rules, setRules] = useState<any[]>([]);
   const [health, setHealth] = useState({ average_health: 0, total_records: 0 });
   const [loading, setLoading] = useState(true);
@@ -16,8 +17,8 @@ export function Dashboard() {
         'Authorization': `Bearer ${token}`
       };
       const [rulesRes, healthRes] = await Promise.all([
-        fetch('http://localhost:8000/api/v1/rules', { headers }),
-        fetch('http://localhost:8000/api/v1/health', { headers })
+        fetch(`${API_BASE_URL}/api/v1/rules`, { headers }),
+        fetch(`${API_BASE_URL}/api/v1/health`, { headers })
       ]);
       const rulesData = await rulesRes.json();
       const healthData = await healthRes.json();
@@ -36,7 +37,7 @@ export function Dashboard() {
 
   const handleDeploy = async (ruleId: string, confirmationId: string) => {
     const token = await getToken();
-    const res = await fetch('http://localhost:8000/api/v1/deployments', {
+    const res = await fetch(`${API_BASE_URL}/api/v1/deployments`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
