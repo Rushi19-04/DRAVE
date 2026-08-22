@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "cryptography>=50.0.0",
     "fastapi>=0.141.1",
     "gitpython>=3.1.59",
     "httpx>=0.28.1",
@@ -15,6 +16,7 @@ dependencies = [
     "psycopg2-binary>=2.9.12",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.15.0",
+    "pyjwt>=2.13.0",
     "pysigma>=1.5.0",
     "pysigma-backend-splunk>=2.1.0",
     "rich>=15.0.0",
