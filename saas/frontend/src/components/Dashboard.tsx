@@ -1,17 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { Activity, ShieldCheck, Zap } from 'lucide-react';
+import { useAuth } from '@clerk/clerk-react';
 import { RuleCard } from './RuleCard';
 
 export function Dashboard() {
+  const { getToken } = useAuth();
   const [rules, setRules] = useState<any[]>([]);
   const [health, setHealth] = useState({ average_health: 0, total_records: 0 });
   const [loading, setLoading] = useState(true);
 
   const fetchDashboardData = async () => {
     try {
+      const token = await getToken();
+      const headers = {
+        'Authorization': `Bearer ${token}`
+      };
       const [rulesRes, healthRes] = await Promise.all([
-        fetch('http://localhost:8000/api/v1/rules'),
-        fetch('http://localhost:8000/api/v1/health')
+        fetch('http://localhost:8000/api/v1/rules', { headers }),
+        fetch('http://localhost:8000/api/v1/health', { headers })
       ]);
       const rulesData = await rulesRes.json();
       const healthData = await healthRes.json();
@@ -29,9 +35,13 @@ export function Dashboard() {
   }, []);
 
   const handleDeploy = async (ruleId: string, confirmationId: string) => {
+    const token = await getToken();
     const res = await fetch('http://localhost:8000/api/v1/deployments', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify({
         rule_id: ruleId,
         target_siem: 'splunk',

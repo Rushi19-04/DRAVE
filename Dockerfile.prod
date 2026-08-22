@@ -1,0 +1,31 @@
+FROM python:3.11-slim
+
+# Install curl for uv installation, and build dependencies if any
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Sync dependencies (excluding dev group and project) to cache them
+RUN uv sync --no-dev --frozen --no-install-project
+
+# Copy the rest of the application
+COPY . .
+
+# Install the project itself
+RUN uv sync --no-dev --frozen
+
+# Expose port
+EXPOSE 8000
+
+# Run the backend using the environment created by uv
+CMD ["uv", "run", "uvicorn", "saas.backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

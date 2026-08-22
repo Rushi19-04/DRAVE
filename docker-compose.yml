@@ -3,9 +3,10 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
+    env_file:
+      - saas/backend/.env
     environment:
       POSTGRES_USER: drave
-      POSTGRES_PASSWORD: password
       POSTGRES_DB: drave_db
     ports:
       - "5432:5432"

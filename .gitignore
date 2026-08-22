@@ -30,3 +30,8 @@ results/
 
 # Mypy
 .mypy_cache/
+
+# Environment Variables
+.env
+.env.*
+!.env.example

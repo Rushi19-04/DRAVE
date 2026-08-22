@@ -15,17 +15,18 @@ from saas.backend.models import RuleEntity, HealthRecord, DeploymentLog
 from core.detection.models import DetectionRule
 from adapters.splunk.adapter import SplunkAdapter
 from core.deployment.verify import verify_deployment
+from saas.backend.api.auth import get_current_user
 
 router = APIRouter()
 
-# Mock Auth Dependency
-def get_current_tenant() -> str:
-    """Mock auth for MVP."""
-    return "tenant_1"
-
-def get_current_user() -> str:
-    """Mock auth for MVP."""
-    return "api_user@drave.local"
+def get_tenant_session(
+    user: str = Depends(get_current_user),
+    session: Session = Depends(get_session)
+) -> Session:
+    """Provides a database session automatically scoped to the user's tenant (user_id)."""
+    # Use user_id as tenant_id (Personal Workspaces)
+    session.info["tenant_id"] = user
+    return session
 
 class RuleCreate(BaseModel):
     rule: DetectionRule
@@ -34,12 +35,12 @@ class RuleCreate(BaseModel):
 @router.post("/rules", response_model=RuleEntity)
 def ingest_rule(
     payload: RuleCreate, 
-    session: Session = Depends(get_session),
-    tenant_id: str = Depends(get_current_tenant)
+    session: Session = Depends(get_tenant_session),
+    user: str = Depends(get_current_user)
 ):
     """Ingest a new rule from CI/CD runs."""
-    # Check if rule exists
-    existing = session.exec(select(RuleEntity).where(RuleEntity.id == payload.rule.id, RuleEntity.tenant_id == tenant_id)).first()
+    # The session is now automatically scoped to tenant_id=user!
+    existing = session.exec(select(RuleEntity).where(RuleEntity.id == payload.rule.id)).first()
     
     if existing:
         # Update
@@ -47,29 +48,34 @@ def ingest_rule(
             setattr(existing, k, v)
         db_rule = existing
     else:
-        # Create
-        db_rule = RuleEntity(**payload.rule.model_dump(), tenant_id=tenant_id)
+        # Create - we still need to populate tenant_id explicitly on insert
+        db_rule = RuleEntity(**payload.rule.model_dump(), tenant_id=user)
         session.add(db_rule)
         
     # Record health
     health_record = HealthRecord(
         rule_id=db_rule.id,
-        tenant_id=tenant_id,
+        tenant_id=user,
         score=payload.score
     )
     session.add(health_record)
     
-    session.commit()
-    session.refresh(db_rule)
+    try:
+        session.commit()
+        session.refresh(db_rule)
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="Rule ID conflict or other integrity error.")
+        
     return db_rule
 
 @router.get("/rules", response_model=List[RuleEntity])
 def get_rules(
-    session: Session = Depends(get_session),
-    tenant_id: str = Depends(get_current_tenant)
+    session: Session = Depends(get_tenant_session)
 ):
     """Fetch rules."""
-    rules = session.exec(select(RuleEntity).where(RuleEntity.tenant_id == tenant_id)).all()
+    # NO manual .where(tenant_id) - do_orm_execute handles it globally!
+    rules = session.exec(select(RuleEntity)).all()
     return rules
 
 class DeployRequest(BaseModel):
@@ -80,8 +86,7 @@ class DeployRequest(BaseModel):
 @router.post("/deployments", response_model=DeploymentLog)
 def trigger_deployment(
     req: DeployRequest,
-    session: Session = Depends(get_session),
-    tenant_id: str = Depends(get_current_tenant),
+    session: Session = Depends(get_tenant_session),
     user: str = Depends(get_current_user)
 ):
     """Trigger SIEM deployments securely (Tier 3)."""
@@ -92,15 +97,15 @@ def trigger_deployment(
             detail="Deployment aborted: Confirmation did not match detection ID."
         )
         
-    rule_entity = session.exec(select(RuleEntity).where(RuleEntity.id == req.rule_id, RuleEntity.tenant_id == tenant_id)).first()
+    rule_entity = session.exec(select(RuleEntity).where(RuleEntity.id == req.rule_id)).first()
     if not rule_entity:
         raise HTTPException(status_code=404, detail="Rule not found")
         
-    # Create deployment log (Pending)
+    # Create deployment log
     deployment = DeploymentLog(
         deployment_id=str(uuid.uuid4()),
         detection_id=rule_entity.id,
-        tenant_id=tenant_id,
+        tenant_id=user,
         git_commit="HEAD",
         version=rule_entity.version,
         target_siem=req.target_siem,
@@ -142,12 +147,11 @@ def trigger_deployment(
 
 @router.get("/health")
 def get_health(
-    session: Session = Depends(get_session),
-    tenant_id: str = Depends(get_current_tenant)
+    session: Session = Depends(get_tenant_session)
 ):
     """Fetch aggregate workspace health metrics."""
-    # Simplified aggregate for MVP
-    records = session.exec(select(HealthRecord).where(HealthRecord.tenant_id == tenant_id)).all()
+    # Simplified aggregate for MVP - queries are automatically scoped
+    records = session.exec(select(HealthRecord)).all()
     if not records:
         return {"average_health": 0.0, "total_records": 0}
         
