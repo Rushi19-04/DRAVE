@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from saas.backend.database import init_db
 from saas.backend.api.routes import router
+from saas.backend.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -22,7 +23,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[url.strip() for url in settings.frontend_urls.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

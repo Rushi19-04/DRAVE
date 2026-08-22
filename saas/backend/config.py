@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     clerk_secret_key: str
     clerk_issuer_url: str
 
+    # CORS
+    frontend_urls: str = "http://localhost:5173,http://127.0.0.1:5173"
+
     model_config = SettingsConfigDict(
         env_file=ENV_PATH,
         env_file_encoding="utf-8",
