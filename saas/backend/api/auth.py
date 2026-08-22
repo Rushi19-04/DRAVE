@@ -14,7 +14,7 @@ CLERK_ISSUER_URL = settings.clerk_issuer_url.rstrip("/")
 # We fetch the JWKS once and cache it in memory for this prototype
 _jwks_cache = None
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 def get_jwks():
     global _jwks_cache
@@ -46,7 +46,16 @@ def get_rsa_public_key(jwk: dict) -> str:
     )
     return pem
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
+def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Security(security)):
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        if settings.ci_api_key and settings.ci_tenant_id and api_key == settings.ci_api_key:
+            return settings.ci_tenant_id
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     token = credentials.credentials
     try:
         unverified_header = jwt.get_unverified_header(token)

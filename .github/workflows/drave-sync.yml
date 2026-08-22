@@ -1,0 +1,49 @@
+name: DRAVE API Sync
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'detections/rules/**.yml'
+      - 'detections/rules/**.yaml'
+
+jobs:
+  sync-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            detections/rules/**.yml
+            detections/rules/**.yaml
+
+      - name: Sync Changed Rules to API
+        if: steps.changed-files.outputs.any_changed == 'true'
+        env:
+          API_BASE_URL: "https://drave-bfsi.onrender.com"
+          DRAVE_API_KEY: ${{ secrets.DRAVE_API_KEY }}
+        run: |
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            echo "Syncing $file..."
+            uv run python cli/sync.py "$file"
+          done
