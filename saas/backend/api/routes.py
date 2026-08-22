@@ -32,7 +32,7 @@ class RuleCreate(BaseModel):
     rule: DetectionRule
     score: float
 
-@router.post("/rules", response_model=RuleEntity)
+@router.post("/rules", response_model=RuleEntity, tags=["Rules"])
 def ingest_rule(
     payload: RuleCreate, 
     session: Session = Depends(get_tenant_session),
@@ -69,7 +69,7 @@ def ingest_rule(
         
     return db_rule
 
-@router.get("/rules", response_model=List[RuleEntity])
+@router.get("/rules", response_model=List[RuleEntity], tags=["Rules"])
 def get_rules(
     session: Session = Depends(get_tenant_session)
 ):
@@ -83,7 +83,7 @@ class DeployRequest(BaseModel):
     target_siem: str = "splunk"
     confirmation_id: str
 
-@router.post("/deployments", response_model=DeploymentLog)
+@router.post("/deployments", response_model=DeploymentLog, tags=["Deployments"])
 def trigger_deployment(
     req: DeployRequest,
     session: Session = Depends(get_tenant_session),
@@ -145,7 +145,7 @@ def trigger_deployment(
     
     return deployment
 
-@router.get("/health")
+@router.get("/health", tags=["Health"])
 def get_health(
     session: Session = Depends(get_tenant_session)
 ):
