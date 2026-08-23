@@ -5,6 +5,118 @@ import yaml
 import requests
 from pathlib import Path
 from core.detection.models import DetectionRule
+from core.testing.runner import run_test
+from core.testing.models import TestCase
+from core.validation.report import generate_report as generate_schema_report
+from core.validation.dependencies import extract_dependencies
+from core.validation.schema import SchemaProvider
+from core.volume.estimator import VolumeEstimator
+from core.volume.policies import evaluate_volume_policy
+from adapters.sigma.inmemory import SigmaInMemoryAdapter
+from core.scoring.evidence import EvidenceBuilder
+from core.replay.engine import ReplayEngine
+from core.replay.models import AttackScenario
+from core.robustness.coverage import CoverageCalculator
+
+def generate_evidence(rule: DetectionRule):
+    # Syntax & Schema
+    adapter = SigmaInMemoryAdapter()
+    syntax_valid = True
+    schema_report = None
+    try:
+        compiled = adapter.compile(rule)
+        deps = extract_dependencies(compiled)
+        schema_fields = SchemaProvider().get_schema_fields(deps.logsource_id)
+        schema_report = generate_schema_report(deps, schema_fields)
+    except Exception:
+        syntax_valid = False
+
+    # Tests
+    tests_dir = Path("detections/tests")
+    test_paths = []
+    if tests_dir.exists():
+        for f in tests_dir.glob("*.yml"):
+            try:
+                td = load_yaml(str(f))
+                if td.get("detection_id") == rule.id:
+                    test_paths.append(str(f))
+            except Exception:
+                pass
+                
+    tests_total = len(test_paths)
+    tests_passed = 0
+    if tests_total > 0 and syntax_valid:
+        for f in test_paths:
+            try:
+                tc = TestCase(**load_yaml(f))
+                res = run_test(rule, tc, adapter)
+                if res.status == "PASS":
+                    tests_passed += 1
+            except Exception:
+                pass
+
+    # Volume
+    volume_result = None
+    sample_file = Path("fixtures/powershell/attack.json")
+    if sample_file.exists():
+        try:
+            estimator = VolumeEstimator()
+            sample_data = json.loads(sample_file.read_text(encoding="utf-8"))
+            if isinstance(sample_data, dict): sample_data = [sample_data]
+            est_vol = estimator.estimate(rule, sample_data, 1000)
+            volume_result = evaluate_volume_policy(rule, est_vol)
+        except Exception:
+            pass
+
+    # Attack & Variations
+    attack_report = None
+    variation_report = None
+    if rule.attack_mappings:
+        technique = rule.attack_mappings[0]
+        # Replay
+        scenarios_dir = Path("detections/scenarios")
+        if scenarios_dir.exists():
+            for f in scenarios_dir.glob("*.yml"):
+                try:
+                    sd = load_yaml(str(f))
+                    if sd.get("technique") == technique and rule.id in sd.get("expected_detections", []):
+                        scenario = AttackScenario(**sd)
+                        loaded_telemetry = []
+                        for item in scenario.telemetry:
+                            if isinstance(item, str) and Path(item).exists():
+                                loaded_telemetry.append(json.loads(Path(item).read_text(encoding="utf-8")))
+                            elif isinstance(item, dict):
+                                loaded_telemetry.append(item)
+                        scenario.telemetry = loaded_telemetry
+                        engine = ReplayEngine()
+                        attack_report = engine.replay(scenario)
+                        break
+                except Exception:
+                    pass
+        # Variations
+        v_dir = Path(f"fixtures/{technique.lower().replace('.', '_')}")
+        if not v_dir.exists() and "powershell" in rule.name.lower():
+            v_dir = Path("fixtures/powershell")
+        if v_dir.exists():
+            variation_paths = [str(f) for f in v_dir.glob("*.json")]
+            if variation_paths:
+                calc = CoverageCalculator()
+                try:
+                    variation_report = calc.calculate(rule, variation_paths)
+                except Exception:
+                    pass
+
+    builder = EvidenceBuilder()
+    return builder.build(
+        rule=rule,
+        syntax_valid=syntax_valid,
+        tests_total=tests_total,
+        tests_passed=tests_passed,
+        schema_report=schema_report,
+        volume_result=volume_result,
+        attack_report=attack_report,
+        variation_report=variation_report
+    )
 
 def load_yaml(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
@@ -46,13 +158,13 @@ def sync_rule(rule_path: str):
         print(f"Failed to parse DetectionRule from {rule_path}: {e}")
         sys.exit(1)
 
-    # Note: In a full implementation, we would extract the real Evidence score here.
-    # For this prototype, we assign a perfect score if CI passes.
-    score = 1.0
+    print(f"Generating real Evidence Report for {rule.id}...")
+    evidence = generate_evidence(rule)
 
     payload = {
         "rule": json.loads(rule.model_dump_json()),
-        "score": score
+        "score": evidence.health_score,
+        "evidence": json.loads(evidence.model_dump_json())
     }
 
     url = f"{api_base_url}/api/v1/rules"

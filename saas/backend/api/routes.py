@@ -33,6 +33,7 @@ def get_tenant_session(
 class RuleCreate(BaseModel):
     rule: DetectionRule
     score: float
+    evidence: dict = {}
 
 @router.post("/rules", response_model=RuleEntity, tags=["Rules"])
 def ingest_rule(
@@ -48,10 +49,11 @@ def ingest_rule(
         # Update
         for k, v in payload.rule.model_dump().items():
             setattr(existing, k, v)
+        existing.evidence_report = payload.evidence
         db_rule = existing
     else:
         # Create - we still need to populate tenant_id explicitly on insert
-        db_rule = RuleEntity(**payload.rule.model_dump(), tenant_id=user)
+        db_rule = RuleEntity(**payload.rule.model_dump(), tenant_id=user, evidence_report=payload.evidence)
         session.add(db_rule)
         
     # Record health

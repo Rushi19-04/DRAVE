@@ -24,6 +24,7 @@ class RuleEntity(DetectionRule, SQLModel, table=True):
     tags: List[str] = Field(default=[], sa_column=Column(JSON))
     attack_mappings: List[str] = Field(default=[], sa_column=Column(JSON))
     volume_policy: Optional[Dict[str, int]] = Field(default=None, sa_column=Column(JSON))
+    evidence_report: dict = Field(default={}, sa_column=Column(JSON))
 
 class HealthRecord(SQLModel, table=True):
     """Historical tracking of rule scores over time."""
