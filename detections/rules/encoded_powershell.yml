@@ -37,3 +37,5 @@ query: |
   level: high
 
 # fix encoding
+
+# Triggering real sync to prove error handling

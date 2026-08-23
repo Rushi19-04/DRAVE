@@ -45,5 +45,5 @@ jobs:
         run: |
           for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
             echo "Syncing $file..."
-            uv run python cli/sync.py "$file"
+            uv run python cli/sync.py "$file" || exit 1
           done
