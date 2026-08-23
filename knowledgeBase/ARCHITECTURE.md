@@ -137,15 +137,22 @@ sequenceDiagram
     API-->>Frontend: Return Raw Key (Once)
     User->>Git: Store Key as Repository Secret
     
-    %% Rule Authoring & Sync
+    %% Rule Authoring & Sync (Via CI/CD)
     User->>Git: Commit new rule YAML to `main`
     Git->>CI: Trigger `drave-sync.yml` on push
-    CI->>CI: Parse YAML, Run Core Engine (Syntax, Schema, Tests)
-    CI->>CI: Generate Evidence Score (Health)
+    CI->>CI: Parse YAML, Run Core Engine (Syntax, Schema, Tests, Attack Replay)
+    CI->>CI: Generate Evidence Score & EvidenceReport JSON
     CI->>API: POST /api/v1/rules (X-API-Key)
     API->>DB: Hash Key, Verify in DB -> Map to Tenant ID
-    API->>DB: Upsert RuleEntity & HealthRecord (Scoped to Tenant ID)
+    API->>DB: Upsert RuleEntity (with Evidence JSON) & HealthRecord
     API-->>CI: 200 OK
+    
+    %% Rule Authoring (Via Dashboard UI)
+    User->>Frontend: Click "New Rule" and submit form
+    Frontend->>API: POST /api/v1/rules (Bearer JWT)
+    API->>API: Validate JWT via Clerk JWKS
+    API->>DB: Insert RuleEntity (Empty Evidence JSON)
+    API-->>Frontend: 200 OK
     
     %% Viewing & Deployment
     User->>Frontend: View Active Detections
