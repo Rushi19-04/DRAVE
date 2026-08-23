@@ -34,7 +34,7 @@ interface StageConfig {
 }
 
 export const PipelineStageView: React.FC<PipelineStageViewProps> = ({ evidence }) => {
-  if (!evidence) {
+  if (!evidence || Object.keys(evidence).length === 0 || !evidence.gates) {
     return (
       <div className="flex items-center gap-2 text-gray-500 text-sm italic">
         <Clock className="w-4 h-4" /> No CI Pipeline Data Available
@@ -108,7 +108,7 @@ export const PipelineStageView: React.FC<PipelineStageViewProps> = ({ evidence }
   });
 
   return (
-    <div className="w-full flex items-center overflow-x-auto py-4 px-2 space-x-1">
+    <div className="w-full flex items-center py-2 px-2 space-x-1 overflow-visible">
       {stages.map((stage, idx) => {
         let Icon = CheckCircle2;
         let colorClass = "text-green-500";
@@ -134,15 +134,15 @@ export const PipelineStageView: React.FC<PipelineStageViewProps> = ({ evidence }
 
         return (
           <React.Fragment key={stage.name}>
-            <div className={`relative flex flex-col items-center justify-center min-w-[90px] group cursor-pointer p-2 rounded border ${bgClass} ${borderClass} hover:bg-opacity-20 transition-all`}>
+            <div className={`relative flex flex-col items-center justify-center min-w-[115px] group cursor-pointer p-2 rounded border ${bgClass} ${borderClass} hover:bg-opacity-20 transition-all`}>
               <Icon className={`w-5 h-5 mb-1 ${colorClass}`} />
-              <span className={`text-[10px] font-medium uppercase tracking-wider text-center ${colorClass}`}>
+              <span className={`text-[10px] font-medium uppercase tracking-wider text-center ${colorClass} whitespace-nowrap`}>
                 {stage.name}
               </span>
               
-              {/* Tooltip on Hover */}
-              <div className="absolute bottom-full mb-2 hidden group-hover:block w-max max-w-[200px] z-10 bg-gray-900 border border-gray-700 text-xs text-gray-200 p-2 rounded shadow-xl">
-                <span className="font-bold block mb-1">{stage.name}</span>
+              {/* Tooltip on Hover - positioned to avoid list row clipping */}
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-max max-w-[220px] z-50 bg-gray-800 border border-gray-600 text-xs text-gray-200 p-2 rounded shadow-xl text-center">
+                <span className="font-bold block mb-1 text-white">{stage.name}</span>
                 {stage.details}
               </div>
             </div>
