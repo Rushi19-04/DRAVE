@@ -25,9 +25,19 @@ def _add_tenant_filter(orm_execute_state):
                     entity.tenant_id == tenant_id
                 )
 
+from sqlalchemy import text
+
 def init_db():
-    """Create tables."""
+    """Create tables and run simple migrations."""
     SQLModel.metadata.create_all(engine)
+    
+    # Manual migration for evidence_report since we don't have Alembic
+    try:
+        with Session(engine) as session:
+            session.exec(text("ALTER TABLE ruleentity ADD COLUMN IF NOT EXISTS evidence_report JSON;"))
+            session.commit()
+    except Exception as e:
+        print(f"Migration skipped or failed: {e}")
 
 def get_session():
     """Dependency for FastAPI."""
