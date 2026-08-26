@@ -1,0 +1,43 @@
+# ──────────────────────────────────────────────────────────────
+# Dockerfile.action — DRAVE Validation Engine (GitHub Action)
+#
+# This builds a lightweight container containing ONLY the
+# detection validation engine (core/, adapters/, cli/) — no
+# SaaS backend, no frontend.  It is published to ghcr.io and
+# consumed by the drave-action GitHub Action.
+# ──────────────────────────────────────────────────────────────
+FROM python:3.11-slim
+
+# Install uv + git (git needed for regression baseline diffs)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+WORKDIR /engine
+
+# Copy dependency manifests first for layer caching
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies (no dev, frozen lockfile)
+RUN uv sync --no-dev --frozen --no-install-project
+
+# Copy only the engine source — NOT saas/, NOT frontend/
+COPY core/ core/
+COPY adapters/ adapters/
+COPY cli/ cli/
+COPY runner/ runner/
+
+# Copy schema definitions used by the validation engine
+COPY schemas/ schemas/
+
+# Install the project itself (registers the `drave` CLI entrypoint)
+RUN uv sync --no-dev --frozen
+
+# Copy the entrypoint script
+COPY action/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
