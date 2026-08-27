@@ -33,6 +33,9 @@ COPY runner/ runner/
 # Copy schema definitions used by the validation engine
 COPY schemas/ schemas/
 
+# README.md is required by pyproject.toml (readme = "README.md")
+COPY README.md README.md
+
 # Install the project itself (registers the `drave` CLI entrypoint)
 RUN uv sync --no-dev --frozen
 
