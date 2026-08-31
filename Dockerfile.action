@@ -19,7 +19,7 @@ ENV PATH="/root/.local/bin:${PATH}"
 WORKDIR /engine
 
 # Copy dependency manifests first for layer caching
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md ./
 
 # Install dependencies (no dev, frozen lockfile)
 RUN uv sync --no-dev --frozen --no-install-project
@@ -32,9 +32,6 @@ COPY runner/ runner/
 
 # Copy schema definitions used by the validation engine
 COPY schemas/ schemas/
-
-# README.md is required by pyproject.toml (readme = "README.md")
-COPY README.md README.md
 
 # Install the project itself (registers the `drave` CLI entrypoint)
 RUN uv sync --no-dev --frozen
