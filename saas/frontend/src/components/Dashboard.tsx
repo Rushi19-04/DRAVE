@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Zap, Plus, Settings as SettingsIcon, LayoutDashboard } from 'lucide-react';
+import { Zap, Settings as SettingsIcon, LayoutDashboard } from 'lucide-react';
 import { useAuth, UserButton } from '@clerk/clerk-react';
-import { CreateRuleModal } from './CreateRuleModal';
 import { Settings } from './Settings';
 import { ValidationRuns } from './ValidationRuns';
 import { PipelineStageView } from './PipelineStageView';
@@ -13,7 +12,6 @@ export function Dashboard() {
   const [rules, setRules] = useState<any[]>([]);
   const [health, setHealth] = useState({ average_health: 0, total_records: 0 });
   const [loading, setLoading] = useState(true);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'rules' | 'settings' | 'validations'>('rules');
   const [selectedDeployRule, setSelectedDeployRule] = useState<any | null>(null);
 
@@ -128,12 +126,6 @@ export function Dashboard() {
                 <span className="text-xs text-gray-400 font-medium">Health</span>
                 <span className="text-sm font-bold text-green-400">{health.average_health.toFixed(1)}</span>
               </div>
-              <button
-                onClick={() => setIsCreateModalOpen(true)}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-all"
-              >
-                <Plus size={16} /> New Rule
-              </button>
             </div>
           )}
         </header>
@@ -211,17 +203,6 @@ export function Dashboard() {
       </main>
 
       {/* Modals */}
-      {isCreateModalOpen && (
-        <CreateRuleModal
-          apiBaseUrl={API_BASE_URL}
-          onClose={() => setIsCreateModalOpen(false)}
-          onSuccess={() => {
-            setIsCreateModalOpen(false);
-            loadData();
-          }}
-        />
-      )}
-
       {selectedDeployRule && (
         <DeploymentModal
           ruleId={selectedDeployRule.id}
