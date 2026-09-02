@@ -12,6 +12,16 @@ interface ValidationRun {
   evidence_report: any;
 }
 
+export const formatValidationDate = (dateString: string) => {
+  // Backend returns naive UTC string (e.g. "2026-09-02T17:18:20")
+  // Append 'Z' to explicitly parse it as UTC, then format to local timezone
+  const utcString = dateString.endsWith('Z') || dateString.includes('+') ? dateString : `${dateString}Z`;
+  const d = new Date(utcString);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }).format(d);
+};
+
 export function ValidationRuns() {
   const { getToken } = useAuth();
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -41,12 +51,6 @@ export function ValidationRuns() {
     fetchRuns();
   }, []);
 
-  const formatDate = (dateString: string) => {
-    const d = new Date(dateString);
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
-    }).format(d);
-  };
 
   return (
     <div className="w-full flex flex-col h-full">
@@ -115,7 +119,7 @@ export function ValidationRuns() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 text-gray-400">
                         <Clock size={14} />
-                        {formatDate(run.timestamp)}
+                        {formatValidationDate(run.timestamp)}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -149,7 +153,7 @@ export function ValidationRuns() {
                   Validation Details
                 </h3>
                 <p className="text-sm text-gray-400 mt-1">
-                  {selectedRun.rule_name} <span className="text-gray-600 px-2">•</span> {formatDate(selectedRun.timestamp)}
+                  {selectedRun.rule_name} <span className="text-gray-600 px-2">•</span> {formatValidationDate(selectedRun.timestamp)}
                 </p>
               </div>
               <button 
