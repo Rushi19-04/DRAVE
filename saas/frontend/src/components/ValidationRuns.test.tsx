@@ -15,10 +15,6 @@ describe('formatValidationDate', () => {
     
     // Let's explicitly test the parsing logic with a specific timezone (UTC) to verify output consistency
     const d = new Date(naiveDate + 'Z');
-    const expectedUTCFormatter = new Intl.DateTimeFormat('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
-      timeZone: 'UTC'
-    });
     
     const ourFormatter = new Intl.DateTimeFormat('en-US', {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
