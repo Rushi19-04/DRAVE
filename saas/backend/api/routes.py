@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 from pydantic import BaseModel
 
 from saas.backend.database import get_session
-from saas.backend.models import RuleEntity, HealthRecord, DeploymentLog, CIApiKey
+from saas.backend.models import RuleEntity, HealthRecord, DeploymentLog, CIApiKey, ValidationRun
 import secrets
 import hashlib
 
@@ -64,6 +64,18 @@ def ingest_rule(
     )
     session.add(health_record)
     
+    # Record Validation Run
+    passed = payload.evidence.get("gates", {}).get("passed_all_gates", False)
+    val_run = ValidationRun(
+        tenant_id=user,
+        rule_id=db_rule.id,
+        rule_name=payload.rule.name,
+        status="PASS" if passed else "FAIL",
+        score=payload.score,
+        evidence_report=payload.evidence
+    )
+    session.add(val_run)
+    
     try:
         session.commit()
         session.refresh(db_rule)
@@ -72,6 +84,11 @@ def ingest_rule(
         raise HTTPException(status_code=409, detail="Rule ID conflict or other integrity error.")
         
     return db_rule
+
+@router.get("/validations", response_model=List[ValidationRun], tags=["Validations"])
+def get_validations(session: Session = Depends(get_tenant_session)):
+    """Fetch all validation runs (newest first)."""
+    return session.exec(select(ValidationRun).order_by(ValidationRun.timestamp.desc())).all()
 
 @router.get("/rules", response_model=List[RuleEntity], tags=["Rules"])
 def get_rules(

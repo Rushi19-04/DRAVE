@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Optional, Dict, Any, List
+import uuid
 
 from sqlmodel import SQLModel, Field
 from sqlalchemy import Column, JSON
@@ -33,6 +34,17 @@ class HealthRecord(SQLModel, table=True):
     tenant_id: str = Field(index=True)
     score: float
     recorded_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ValidationRun(SQLModel, table=True):
+    """Historical validation run logs from CI/CD pipeline."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    tenant_id: str = Field(index=True)
+    rule_id: str = Field(index=True)
+    rule_name: str
+    status: str
+    score: float
+    evidence_report: dict = Field(default={}, sa_column=Column(JSON))
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 class DeploymentLog(DeploymentManifest, SQLModel, table=True):
     """Equivalent to DeploymentManifest for the database."""
