@@ -40,14 +40,24 @@ echo "  DRAVE Detection Validation Engine"
 echo "═══════════════════════════════════════════════════"
 echo ""
 
+WORKSPACE_DIR="${GITHUB_WORKSPACE:-$PWD}"
+
 for file in $RULE_FILES; do
   TOTAL=$((TOTAL + 1))
+  
+  if [[ "$file" = /* ]]; then
+    ABS_PATH="$file"
+  else
+    ABS_PATH="${WORKSPACE_DIR}/${file#./}"
+    ABS_PATH="${ABS_PATH//\/\///}"
+  fi
+
   echo "──────────────────────────────────────────────"
-  echo "  Validating: $file"
+  echo "  Validating: $ABS_PATH"
   echo "──────────────────────────────────────────────"
 
   # Step 1: Run real evidence computation via ci-check
-  if uv run drave ci-check "$file"; then
+  if (cd /engine && uv run drave ci-check "$ABS_PATH"); then
     PASSED=$((PASSED + 1))
     echo "✅ Validation passed for $file"
   else
@@ -59,7 +69,7 @@ for file in $RULE_FILES; do
 
   # Step 2: Sync to DRAVE SaaS API (real evidence, not hardcoded)
   echo "  → Syncing evidence to DRAVE API..."
-  if uv run python -m cli.sync "$file"; then
+  if (cd /engine && uv run python -m cli.sync "$ABS_PATH"); then
     SYNCED=$((SYNCED + 1))
     echo "✅ Synced $file to DRAVE API"
   else
