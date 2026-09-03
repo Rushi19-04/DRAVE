@@ -35,6 +35,9 @@ def init_db():
     try:
         with Session(engine) as session:
             session.exec(text("ALTER TABLE ruleentity ADD COLUMN IF NOT EXISTS evidence_report JSON;"))
+            session.exec(text("ALTER TABLE ruleentity ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;"))
+            session.exec(text("ALTER TABLE ruleentity ADD COLUMN IF NOT EXISTS volume_policy JSON;"))
+            session.exec(text("ALTER TABLE ruleentity ADD COLUMN IF NOT EXISTS known_limitations VARCHAR;"))
             session.commit()
     except Exception as e:
         print(f"Migration skipped or failed: {e}")
