@@ -17,8 +17,13 @@ from core.scoring.evidence import EvidenceBuilder
 from core.replay.engine import ReplayEngine
 from core.replay.models import AttackScenario
 from core.robustness.coverage import CoverageCalculator
+from core.discovery.scanner import RepositoryScanner
 
-def generate_evidence(rule: DetectionRule):
+def generate_evidence(rule: DetectionRule, workspace: str = "."):
+    # Run Artifact Discovery
+    scanner = RepositoryScanner(workspace)
+    inventory = scanner.scan()
+
     # Syntax & Schema
     adapter = SigmaInMemoryAdapter()
     syntax_valid = True
@@ -32,23 +37,14 @@ def generate_evidence(rule: DetectionRule):
         syntax_valid = False
 
     # Tests
-    tests_dir = Path("detections/tests")
-    test_paths = []
-    if tests_dir.exists():
-        for f in tests_dir.glob("*.yml"):
-            try:
-                td = load_yaml(str(f))
-                if td.get("detection_id") == rule.id:
-                    test_paths.append(str(f))
-            except Exception:
-                pass
-                
-    tests_total = len(test_paths)
+    test_refs = inventory.tests.get(rule.id, [])
+    tests_total = len(test_refs)
     tests_passed = 0
     if tests_total > 0 and syntax_valid:
-        for f in test_paths:
+        for ref in test_refs:
             try:
-                tc = TestCase(**load_yaml(f))
+                f = Path(workspace) / ref.relative_path
+                tc = TestCase(**load_yaml(str(f)))
                 res = run_test(rule, tc, adapter)
                 if res.status == "PASS":
                     tests_passed += 1
@@ -57,7 +53,7 @@ def generate_evidence(rule: DetectionRule):
 
     # Volume
     volume_result = None
-    sample_file = Path("fixtures/powershell/attack.json")
+    sample_file = Path(workspace) / "fixtures/powershell/attack.json"
     if sample_file.exists():
         try:
             estimator = VolumeEstimator()
@@ -71,32 +67,34 @@ def generate_evidence(rule: DetectionRule):
     # Attack & Variations
     attack_report = None
     variation_report = None
+    
+    scenario_refs = inventory.scenarios.get(rule.id, [])
+    if scenario_refs:
+        for ref in scenario_refs:
+            try:
+                f = Path(workspace) / ref.relative_path
+                sd = load_yaml(str(f))
+                scenario = AttackScenario(**sd)
+                loaded_telemetry = []
+                for item in scenario.telemetry:
+                    if isinstance(item, str):
+                        item_path = Path(workspace) / item
+                        if item_path.exists():
+                            loaded_telemetry.append(json.loads(item_path.read_text(encoding="utf-8")))
+                    elif isinstance(item, dict):
+                        loaded_telemetry.append(item)
+                scenario.telemetry = loaded_telemetry
+                engine = ReplayEngine()
+                attack_report = engine.replay(scenario)
+                break
+            except Exception:
+                pass
+                
     if rule.attack_mappings:
         technique = rule.attack_mappings[0]
-        # Replay
-        scenarios_dir = Path("detections/scenarios")
-        if scenarios_dir.exists():
-            for f in scenarios_dir.glob("*.yml"):
-                try:
-                    sd = load_yaml(str(f))
-                    if sd.get("technique") == technique and rule.id in sd.get("expected_detections", []):
-                        scenario = AttackScenario(**sd)
-                        loaded_telemetry = []
-                        for item in scenario.telemetry:
-                            if isinstance(item, str) and Path(item).exists():
-                                loaded_telemetry.append(json.loads(Path(item).read_text(encoding="utf-8")))
-                            elif isinstance(item, dict):
-                                loaded_telemetry.append(item)
-                        scenario.telemetry = loaded_telemetry
-                        engine = ReplayEngine()
-                        attack_report = engine.replay(scenario)
-                        break
-                except Exception:
-                    pass
-        # Variations
-        v_dir = Path(f"fixtures/{technique.lower().replace('.', '_')}")
+        v_dir = Path(workspace) / f"fixtures/{technique.lower().replace('.', '_')}"
         if not v_dir.exists() and "powershell" in rule.name.lower():
-            v_dir = Path("fixtures/powershell")
+            v_dir = Path(workspace) / "fixtures/powershell"
         if v_dir.exists():
             variation_paths = [str(f) for f in v_dir.glob("*.json")]
             if variation_paths:
@@ -159,7 +157,8 @@ def sync_rule(rule_path: str):
         sys.exit(1)
 
     print(f"Generating real Evidence Report for {rule.id}...")
-    evidence = generate_evidence(rule)
+    workspace = os.environ.get("DRAVE_WORKSPACE", ".")
+    evidence = generate_evidence(rule, workspace)
 
     payload = {
         "rule": json.loads(rule.model_dump_json()),

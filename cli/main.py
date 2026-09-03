@@ -864,7 +864,8 @@ def evidence(detection_id: str):
 @app.command()
 def ci_check(
     files: list[str] = typer.Argument(..., help="List of YAML rule files to check"),
-    out: str = typer.Option("drave_report.md", help="Path to write the markdown report")
+    out: str = typer.Option("drave_report.md", help="Path to write the markdown report"),
+    workspace: str = typer.Option(".", "--workspace", help="Workspace root for artifact discovery")
 ):
     """Run the CI Evidence pipeline against a list of modified rules."""
     from core.scoring.evidence import EvidenceBuilder
@@ -877,6 +878,7 @@ def ci_check(
     from core.replay.engine import ReplayEngine
     from core.replay.models import AttackScenario
     from core.robustness.coverage import CoverageCalculator
+    from core.discovery.scanner import RepositoryScanner
     from adapters.sigma.inmemory import SigmaInMemoryAdapter
     import git
     from core.regression.runner import RegressionRunner
@@ -885,6 +887,11 @@ def ci_check(
     
     passed_all = True
     full_markdown = []
+    
+    # Run Artifact Discovery
+    scanner = RepositoryScanner(workspace)
+    inventory = scanner.scan()
+    
     
     for file_path in files:
         p = Path(file_path)
@@ -926,20 +933,14 @@ def ci_check(
         adapter = SigmaInMemoryAdapter()
         
         # 2. Tests
-        tests_dir = Path("detections/tests")
-        test_paths = []
-        if tests_dir.exists():
-            for f in tests_dir.glob("*.yml"):
-                td = load_yaml(str(f))
-                if td.get("detection_id") == detection_id:
-                    test_paths.append(str(f))
-                    
-        tests_total = len(test_paths)
+        test_refs = inventory.tests.get(detection_id, [])
+        tests_total = len(test_refs)
         tests_passed = 0
         if tests_total > 0:
-            for f in test_paths:
+            for ref in test_refs:
                 try:
-                    tc = TestCase(**load_yaml(f))
+                    f = Path(workspace) / ref.relative_path
+                    tc = TestCase(**load_yaml(str(f)))
                     res = run_test(rule, tc, adapter)
                     if res.status == "PASS":
                         tests_passed += 1
@@ -958,7 +959,7 @@ def ci_check(
                 
         # 4. Volume
         volume_result = None
-        sample_file = Path("fixtures/powershell/attack.json") # Mock path
+        sample_file = Path(workspace) / "fixtures/powershell/attack.json" # Mock path
         if sample_file.exists():
             try:
                 estimator = VolumeEstimator()
@@ -974,39 +975,44 @@ def ci_check(
         attack_report = None
         variation_report = None
         
-        scenarios_dir = Path("detections/scenarios")
-        if scenarios_dir.exists() and rule.attack_mappings:
-            technique = rule.attack_mappings[0]
-            for f in scenarios_dir.glob("*.yml"):
+        scenario_refs = inventory.scenarios.get(detection_id, [])
+        if scenario_refs:
+            for ref in scenario_refs:
+                f = Path(workspace) / ref.relative_path
                 sd = load_yaml(str(f))
-                if sd.get("technique") == technique and detection_id in sd.get("expected_detections", []):
-                    scenario = AttackScenario(**sd)
-                    loaded_telemetry = []
-                    for item in scenario.telemetry:
-                        if isinstance(item, str) and Path(item).exists():
-                            loaded_telemetry.append(json.loads(Path(item).read_text(encoding="utf-8")))
-                        elif isinstance(item, dict):
-                            loaded_telemetry.append(item)
-                    scenario.telemetry = loaded_telemetry
-                    engine = ReplayEngine()
-                    attack_report = engine.replay(scenario)
-                    break
+                scenario = AttackScenario(**sd)
+                loaded_telemetry = []
+                for item in scenario.telemetry:
+                    if isinstance(item, str):
+                        item_path = Path(workspace) / item
+                        if item_path.exists():
+                            loaded_telemetry.append(json.loads(item_path.read_text(encoding="utf-8")))
+                    elif isinstance(item, dict):
+                        loaded_telemetry.append(item)
+                scenario.telemetry = loaded_telemetry
+                engine = ReplayEngine()
+                attack_report = engine.replay(scenario)
+                break
                     
-            v_dir = Path(f"fixtures/{rule.attack_mappings[0].lower().replace('.', '_')}")
-            if not v_dir.exists() and "powershell" in rule.name.lower():
-                v_dir = Path("fixtures/powershell")
-                
-            v_paths = []
-            if v_dir.exists():
-                for f in v_dir.glob("variation_*.json"):
-                    v_paths.append(str(f))
-            if v_paths:
-                calc = CoverageCalculator()
-                variation_report = calc.calculate(rule, v_paths)
+        if rule.attack_mappings:
+            v_dir = Path(workspace) / f"fixtures/{rule.attack_mappings[0].lower().replace('.', '_')}"
+        else:
+            v_dir = Path(workspace) / "fixtures/dummy"
+            
+        if not v_dir.exists() and "powershell" in rule.name.lower():
+            v_dir = Path(workspace) / "fixtures/powershell"
+            
+        v_paths = []
+        if v_dir.exists():
+            for f in v_dir.glob("variation_*.json"):
+                v_paths.append(str(f))
+        if v_paths:
+            calc = CoverageCalculator()
+            variation_report = calc.calculate(rule, v_paths)
                 
         # 6. Regression 
         regression_report = None
-        r_runner = RegressionRunner(repo_path=".")
+        r_runner = RegressionRunner(repo_path=workspace)
         try:
             b_results, c_results = r_runner.run_regression_suite(rule, str(p))
             regression_report = diff_test_results(detection_id, b_results, c_results)

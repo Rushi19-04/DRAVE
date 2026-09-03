@@ -57,7 +57,7 @@ for file in $RULE_FILES; do
   echo "──────────────────────────────────────────────"
 
   # Step 1: Run real evidence computation via ci-check
-  if (cd /engine && uv run drave ci-check "$ABS_PATH"); then
+  if (cd /engine && uv run drave ci-check "$ABS_PATH" --workspace "$WORKSPACE_DIR"); then
     PASSED=$((PASSED + 1))
     echo "✅ Validation passed for $file"
   else
@@ -69,6 +69,7 @@ for file in $RULE_FILES; do
 
   # Step 2: Sync to DRAVE SaaS API (real evidence, not hardcoded)
   echo "  → Syncing evidence to DRAVE API..."
+  export DRAVE_WORKSPACE="$WORKSPACE_DIR"
   if (cd /engine && uv run python -m cli.sync "$ABS_PATH"); then
     SYNCED=$((SYNCED + 1))
     echo "✅ Synced $file to DRAVE API"
