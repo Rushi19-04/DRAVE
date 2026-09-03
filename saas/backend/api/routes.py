@@ -12,6 +12,10 @@ from saas.backend.database import get_session
 from saas.backend.models import RuleEntity, HealthRecord, DeploymentLog, CIApiKey, ValidationRun
 import secrets
 import hashlib
+import traceback
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Import existing core modules
 from core.detection.models import DetectionRule
@@ -42,48 +46,56 @@ def ingest_rule(
     user: str = Depends(get_current_user)
 ):
     """Ingest a new rule from CI/CD runs."""
-    # The session is now automatically scoped to tenant_id=user!
-    existing = session.exec(select(RuleEntity).where(RuleEntity.id == payload.rule.id)).first()
-    
-    if existing:
-        # Update
-        for k, v in payload.rule.model_dump().items():
-            setattr(existing, k, v)
-        existing.evidence_report = payload.evidence
-        db_rule = existing
-    else:
-        # Create - we still need to populate tenant_id explicitly on insert
-        db_rule = RuleEntity(**payload.rule.model_dump(), tenant_id=user, evidence_report=payload.evidence)
-        session.add(db_rule)
-        
-    # Record health
-    health_record = HealthRecord(
-        rule_id=db_rule.id,
-        tenant_id=user,
-        score=payload.score
-    )
-    session.add(health_record)
-    
-    # Record Validation Run
-    passed = payload.evidence.get("gates", {}).get("passed_all_gates", False)
-    val_run = ValidationRun(
-        tenant_id=user,
-        rule_id=db_rule.id,
-        rule_name=payload.rule.name,
-        status="PASS" if passed else "FAIL",
-        score=payload.score,
-        evidence_report=payload.evidence
-    )
-    session.add(val_run)
-    
     try:
-        session.commit()
-        session.refresh(db_rule)
-    except Exception as e:
-        session.rollback()
-        raise HTTPException(status_code=409, detail="Rule ID conflict or other integrity error.")
+        existing = session.exec(select(RuleEntity).where(RuleEntity.id == payload.rule.id)).first()
         
-    return db_rule
+        if existing:
+            # Update
+            for k, v in payload.rule.model_dump().items():
+                setattr(existing, k, v)
+            existing.evidence_report = payload.evidence
+            db_rule = existing
+        else:
+            # Create - we still need to populate tenant_id explicitly on insert
+            db_rule = RuleEntity(**payload.rule.model_dump(), tenant_id=user, evidence_report=payload.evidence)
+            session.add(db_rule)
+            
+        # Record health
+        health_record = HealthRecord(
+            rule_id=db_rule.id,
+            tenant_id=user,
+            score=payload.score
+        )
+        session.add(health_record)
+        
+        # Record Validation Run
+        passed = payload.evidence.get("gates", {}).get("passed_all_gates", False)
+        val_run = ValidationRun(
+            tenant_id=user,
+            rule_id=db_rule.id,
+            rule_name=payload.rule.name,
+            status="PASS" if passed else "FAIL",
+            score=payload.score,
+            evidence_report=payload.evidence
+        )
+        session.add(val_run)
+        
+        try:
+            session.commit()
+            session.refresh(db_rule)
+        except Exception as e:
+            session.rollback()
+            err_msg = traceback.format_exc()
+            logger.error(f"Commit exception in ingest_rule: {err_msg}")
+            raise HTTPException(status_code=409, detail=f"Rule ID conflict or other integrity error: {err_msg}")
+            
+        return db_rule
+    except HTTPException:
+        raise
+    except Exception as e:
+        err_msg = traceback.format_exc()
+        logger.error(f"Unhandled exception in ingest_rule: {err_msg}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {err_msg}")
 
 @router.get("/validations", response_model=List[ValidationRun], tags=["Validations"])
 def get_validations(session: Session = Depends(get_tenant_session)):
