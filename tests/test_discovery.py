@@ -4,66 +4,129 @@ import json
 from pathlib import Path
 from core.discovery.scanner import RepositoryScanner
 from core.discovery.models import RuleInventory, ArtifactReference
+from core.scoring.gates import GateEvaluator, GateResult
+from core.replay.models import AttackResult
 
-def test_discovery_scanner():
+def test_discovery_scanner_full():
     with tempfile.TemporaryDirectory() as temp_dir:
         workspace = Path(temp_dir)
         
-        # 1. Create a Detection Rule
-        rule_path = workspace / "detections" / "rule1.yml"
-        rule_path.parent.mkdir(parents=True, exist_ok=True)
-        rule_content = {
-            "id": "det-1",
-            "name": "Test Rule",
-            "logsource": {"category": "test"},
-            "detection": {"condition": "selection"},
-            "severity": "high",
-            "author": "DRAVE",
-            "platform": "windows"
-        }
-        with open(rule_path, "w") as f:
-            yaml.dump(rule_content, f)
-            
-        # 2. Create a Test Case in a weird directory
-        test_path = workspace / "weird_customer_dir" / "test1.yml"
-        test_path.parent.mkdir(parents=True, exist_ok=True)
-        test_content = {
-            "test_id": "test-1",
-            "detection_id": "det-1",
-            "input_telemetry": []
-        }
-        with open(test_path, "w") as f:
-            yaml.dump(test_content, f)
-            
-        # 3. Create an Attack Scenario
-        scenario_path = workspace / "scenarios" / "scen1.yaml"
-        scenario_path.parent.mkdir(parents=True, exist_ok=True)
-        scenario_content = {
-            "name": "scen-1",
-            "technique": "T1033",
-            "expected_detections": ["det-1"],
-            "telemetry": []
-        }
-        with open(scenario_path, "w") as f:
-            yaml.dump(scenario_content, f)
-            
+        # 1. Valid Rules
+        r1 = workspace / "rules/rule1.yml"
+        r1.parent.mkdir(parents=True, exist_ok=True)
+        yaml.dump({
+            "id": "det-1", "name": "Rule 1", "logsource": {"category": "test"}, 
+            "detection": {"condition": "selection"}, "attack_mappings": ["T1059"]
+        }, open(r1, "w"))
+        
+        r2 = workspace / "other_dir/rule2.yml"
+        r2.parent.mkdir(parents=True, exist_ok=True)
+        yaml.dump({
+            "id": "det-2", "name": "Rule 2", "logsource": {"category": "test"}, 
+            "detection": {"condition": "selection"}
+        }, open(r2, "w"))
+
+        # 2. Invalid Rules (Schema error)
+        r_invalid = workspace / "rules/invalid.yml"
+        # attack_mappings expects a list, giving an int will fail Pydantic validation
+        yaml.dump({"id": "det-3", "logsource": {}, "detection": {}, "attack_mappings": 123}, open(r_invalid, "w"))
+        
+        # Unreadable file
+        r_unreadable = workspace / "rules/bad.json"
+        with open(r_unreadable, "w") as f:
+            f.write('{ "id": "det-3", bad json ')
+
+        # 3. Test Cases
+        t1 = workspace / "tests/test1.yml"
+        t1.parent.mkdir(parents=True, exist_ok=True)
+        yaml.dump({"test_id": "test-1", "detection_id": "det-1", "input_telemetry": []}, open(t1, "w"))
+
+        # 4. Attack Scenarios (Multiple)
+        s1 = workspace / "scenarios/scen1.yaml"
+        s1.parent.mkdir(parents=True, exist_ok=True)
+        yaml.dump({"name": "scen-1", "technique": "T1059", "expected_detections": ["det-1"], "telemetry": []}, open(s1, "w"))
+        
+        s2 = workspace / "scenarios/scen2.yaml"
+        yaml.dump({"name": "scen-2", "technique": "T1059", "expected_detections": ["det-1"], "telemetry": []}, open(s2, "w"))
+
+        # 5. Schema-Aware Fixtures
+        # Volume fixture explicit detection_id
+        v1 = workspace / "weird/vol1.json"
+        v1.parent.mkdir(parents=True, exist_ok=True)
+        json.dump({"fixture_type": "volume", "detection_id": "det-1", "events": []}, open(v1, "w"))
+        
+        # Variation fixture by technique
+        v2 = workspace / "weird/var1.json"
+        json.dump({"fixture_type": "variation", "technique": "T1059", "events": []}, open(v2, "w"))
+        
+        # Unsupported fixture (missing both detection_id and technique)
+        v3 = workspace / "weird/bad_fix.json"
+        json.dump({"fixture_type": "volume", "events": []}, open(v3, "w"))
+
         # Initialize Scanner
         scanner = RepositoryScanner(workspace_path=str(workspace))
         inventory = scanner.scan()
         
+        # Verify Bootstrap/Rule Discovery
         assert "det-1" in inventory.rules
-        assert inventory.rules["det-1"].name == "Test Rule"
+        assert "det-2" in inventory.rules
+        assert len(inventory.rules) == 2
         
-        assert "det-1" in inventory.tests
-        assert len(inventory.tests["det-1"]) == 1
-        test_ref = inventory.tests["det-1"][0]
-        assert test_ref.id == "test-1"
-        assert test_ref.relative_path == "weird_customer_dir/test1.yml"
+        # Verify Incremental Mapping
+        r1_rel = str(r1.relative_to(workspace)).replace("\\", "/")
+        r2_rel = str(r2.relative_to(workspace)).replace("\\", "/")
+        assert inventory.rule_paths[r1_rel] == "det-1"
+        assert inventory.rule_paths[r2_rel] == "det-2"
         
-        assert "det-1" in inventory.scenarios
-        assert len(inventory.scenarios["det-1"]) == 1
-        scen_ref = inventory.scenarios["det-1"][0]
-        assert scen_ref.id == "scen-1"
-        assert scen_ref.relative_path == "scenarios/scen1.yaml"
+        # Verify Fixture Classification
+        assert "det-1" in inventory.volume_fixtures
+        assert len(inventory.volume_fixtures["det-1"]) == 1
+        assert inventory.volume_fixtures["det-1"][0].relative_path == "weird/vol1.json"
         
-        print("Discovery tests passed!")
+        assert "T1059" in inventory.variation_fixtures
+        assert len(inventory.variation_fixtures["T1059"]) == 1
+        assert inventory.variation_fixtures["T1059"][0].relative_path == "weird/var1.json"
+        
+        # Verify Multiple Scenarios
+        assert len(inventory.scenarios["det-1"]) == 2
+        
+        # Verify Errors
+        err_paths = [e.relative_path for e in inventory.errors]
+        assert "rules/invalid.yml" in err_paths  # schema failure
+        assert "rules/bad.json" in err_paths    # unreadable
+        assert "weird/bad_fix.json" in err_paths # unsupported fixture
+
+def test_scenario_aggregation_gates():
+    evaluator = GateEvaluator()
+    
+    # 1. Both scenarios pass
+    report1 = AttackResult(
+        scenario_id="scen-1", scenario_name="Scen 1", technique="T1059",
+        expected_detections=["det-1"], actual_detections=["det-1"], missed_detections=[],
+        detection_latency_ms=100.0, status="PASS"
+    )
+    report2 = AttackResult(
+        scenario_id="scen-2", scenario_name="Scen 2", technique="T1059",
+        expected_detections=["det-1"], actual_detections=["det-1"], missed_detections=[],
+        detection_latency_ms=100.0, status="PASS"
+    )
+    
+    res_pass = evaluator.evaluate(
+        syntax_valid=True, tests_passed=True, attack_reports=[report1, report2],
+        schema_report=None, volume_result=None
+    )
+    assert res_pass.no_known_attack_missed is True
+    assert res_pass.passed_all_gates is True
+    
+    # 2. One scenario fails
+    report3 = AttackResult(
+        scenario_id="scen-3", scenario_name="Scen 3", technique="T1059",
+        expected_detections=["det-1"], actual_detections=[], missed_detections=["det-1"],
+        detection_latency_ms=0.0, status="FAIL"
+    )
+    res_fail = evaluator.evaluate(
+        syntax_valid=True, tests_passed=True, attack_reports=[report1, report3],
+        schema_report=None, volume_result=None
+    )
+    assert res_fail.no_known_attack_missed is False
+    assert res_fail.passed_all_gates is False

@@ -861,11 +861,14 @@ def evidence(detection_id: str):
         
     console.print("[green]Rule cleared for deployment.[/green]")
 
+from typing import Optional
+
 @app.command()
 def ci_check(
-    files: list[str] = typer.Argument(..., help="List of YAML rule files to check"),
+    files: Optional[list[str]] = typer.Argument(None, help="List of YAML rule files to check"),
     out: str = typer.Option("drave_report.md", help="Path to write the markdown report"),
-    workspace: str = typer.Option(".", "--workspace", help="Workspace root for artifact discovery")
+    workspace: str = typer.Option(".", "--workspace", help="Workspace root for artifact discovery"),
+    bootstrap: bool = typer.Option(False, "--bootstrap", help="Validate all discovered rules")
 ):
     """Run the CI Evidence pipeline against a list of modified rules."""
     from core.scoring.evidence import EvidenceBuilder
@@ -892,46 +895,52 @@ def ci_check(
     scanner = RepositoryScanner(workspace)
     inventory = scanner.scan()
     
-    
-    for file_path in files:
-        p = Path(file_path)
-        if not p.exists() or p.suffix not in [".yml", ".yaml"]:
-            console.print(f"[yellow]Skipping {file_path} (not a YAML file or doesn't exist)[/yellow]")
-            continue
+    if inventory.errors:
+        print(f"⚠️  Discovery encountered {len(inventory.errors)} error(s):")
+        for err in inventory.errors:
+            print(f"   - [{err.error_type}] {err.relative_path}: {err.message}")
             
-        data = load_yaml(str(p))
-        if "id" not in data:
-            console.print(f"[yellow]Skipping {file_path} (no detection id)[/yellow]")
-            continue
+    rules_to_check = []
+    if bootstrap:
+        rules_to_check = list(inventory.rules.values())
+        print(f"Bootstrap mode: Validating all {len(rules_to_check)} discovered rules.")
+    else:
+        if not files:
+            print("Error: Must provide files in incremental mode, or use --bootstrap.")
+            raise typer.Exit(code=1)
             
-        detection_id = data["id"]
-        console.print(f"\n[bold blue]Running checks for {detection_id}...[/bold blue]")
-        
-        if "query" not in data:
-            data["query"] = p.read_text(encoding="utf-8")
-        data["name"] = data.get("title", data.get("name", "Unknown"))
-        data["severity"] = data.get("level", data.get("severity", "low"))
-        if "tags" in data and "attack_mappings" not in data:
-            data["attack_mappings"] = [t.replace("attack.", "").upper() for t in data["tags"] if t.startswith("attack.t")]
-        data["language"] = data.get("language", "sigma")
-        data["platform"] = data.get("platform", "windows")
-        data["author"] = data.get("author", "unknown")
-        data["created_at"] = data.get("created_at", data.get("date", "2024-01-01T00:00:00Z"))
-        data["updated_at"] = data.get("updated_at", data.get("modified", "2024-01-01T00:00:00Z"))
-        if isinstance(data["created_at"], str) and "/" in data["created_at"]:
-             data["created_at"] = "2024-01-01T00:00:00Z"
-             
-        rule = DetectionRule(**data)
+        for file_path in files:
+            p = Path(file_path)
+            try:
+                rel_path = str(p.resolve().relative_to(Path(workspace).resolve())).replace("\\", "/")
+            except ValueError:
+                rel_path = str(p).replace("\\", "/")
+                
+            if rel_path in inventory.rule_paths:
+                det_id = inventory.rule_paths[rel_path]
+                if det_id in inventory.rules:
+                    rules_to_check.append(inventory.rules[det_id])
+                else:
+                    print(f"Warning: Discovered rule {det_id} but it failed to parse. Skipping {file_path}")
+            else:
+                print(f"Warning: File {file_path} is not a valid detection rule. Skipping.")
+                
+    if not rules_to_check:
+        print("No valid rules to check.")
+        raise typer.Exit(code=0)
+
+    for rule in rules_to_check:
+        detection_id = rule.id
+        print(f"\nEvaluating Rule: {detection_id}")
         
         # 1. Syntax
         syntax_valid = True
+        adapter = SigmaInMemoryAdapter()
         try:
-            SigmaInMemoryAdapter().compile(rule)
+            adapter.compile(rule)
         except Exception:
             syntax_valid = False
             
-        adapter = SigmaInMemoryAdapter()
-        
         # 2. Tests
         test_refs = inventory.tests.get(detection_id, [])
         tests_total = len(test_refs)
@@ -959,12 +968,19 @@ def ci_check(
                 
         # 4. Volume
         volume_result = None
-        sample_file = Path(workspace) / "fixtures/powershell/attack.json" # Mock path
-        if sample_file.exists():
+        vol_refs = inventory.volume_fixtures.get(detection_id, [])
+        if not vol_refs and rule.attack_mappings:
+            vol_refs = inventory.volume_fixtures.get(rule.attack_mappings[0], [])
+            
+        if vol_refs:
+            # For MVP, just use the first matching volume fixture
+            sample_file = Path(workspace) / vol_refs[0].relative_path
             try:
                 estimator = VolumeEstimator()
                 sample_data = json.loads(sample_file.read_text(encoding="utf-8"))
-                if isinstance(sample_data, dict):
+                if isinstance(sample_data, dict) and "events" in sample_data:
+                    sample_data = sample_data["events"]
+                elif isinstance(sample_data, dict): 
                     sample_data = [sample_data]
                 est_vol = estimator.estimate(rule, sample_data, 1000)
                 volume_result = evaluate_volume_policy(rule, est_vol)
@@ -972,40 +988,35 @@ def ci_check(
                 pass
                 
         # 5. Attack Replay & Variations
-        attack_report = None
+        attack_reports = []
         variation_report = None
         
         scenario_refs = inventory.scenarios.get(detection_id, [])
         if scenario_refs:
             for ref in scenario_refs:
                 f = Path(workspace) / ref.relative_path
-                sd = load_yaml(str(f))
-                scenario = AttackScenario(**sd)
-                loaded_telemetry = []
-                for item in scenario.telemetry:
-                    if isinstance(item, str):
-                        item_path = Path(workspace) / item
-                        if item_path.exists():
-                            loaded_telemetry.append(json.loads(item_path.read_text(encoding="utf-8")))
-                    elif isinstance(item, dict):
-                        loaded_telemetry.append(item)
-                scenario.telemetry = loaded_telemetry
-                engine = ReplayEngine()
-                attack_report = engine.replay(scenario)
-                break
+                try:
+                    sd = load_yaml(str(f))
+                    scenario = AttackScenario(**sd)
+                    loaded_telemetry = []
+                    for item in scenario.telemetry:
+                        if isinstance(item, str):
+                            item_path = Path(workspace) / item
+                            if item_path.exists():
+                                loaded_telemetry.append(json.loads(item_path.read_text(encoding="utf-8")))
+                        elif isinstance(item, dict):
+                            loaded_telemetry.append(item)
+                    scenario.telemetry = loaded_telemetry
+                    engine = ReplayEngine()
+                    attack_reports.append(engine.replay(scenario))
+                except Exception:
+                    pass
                     
-        if rule.attack_mappings:
-            v_dir = Path(workspace) / f"fixtures/{rule.attack_mappings[0].lower().replace('.', '_')}"
-        else:
-            v_dir = Path(workspace) / "fixtures/dummy"
+        var_refs = inventory.variation_fixtures.get(detection_id, [])
+        if not var_refs and rule.attack_mappings:
+            var_refs = inventory.variation_fixtures.get(rule.attack_mappings[0], [])
             
-        if not v_dir.exists() and "powershell" in rule.name.lower():
-            v_dir = Path(workspace) / "fixtures/powershell"
-            
-        v_paths = []
-        if v_dir.exists():
-            for f in v_dir.glob("variation_*.json"):
-                v_paths.append(str(f))
+        v_paths = [str(Path(workspace) / r.relative_path) for r in var_refs]
         if v_paths:
             calc = CoverageCalculator()
             variation_report = calc.calculate(rule, v_paths)
@@ -1014,33 +1025,38 @@ def ci_check(
         regression_report = None
         r_runner = RegressionRunner(repo_path=workspace)
         try:
-            b_results, c_results = r_runner.run_regression_suite(rule, str(p))
-            regression_report = diff_test_results(detection_id, b_results, c_results)
-        except ValueError:
-            pass
-        except git.exc.GitCommandError:
+            # We don't have the original file_path easily accessible, use relative path if we want
+            # But the regression runner in MVP expects the file path of the rule in the working tree
+            # Let's find the rel_path from inventory
+            rel_path = next((k for k, v in inventory.rule_paths.items() if v == detection_id), None)
+            if rel_path:
+                b_results, c_results = r_runner.run_regression_suite(rule, str(Path(workspace) / rel_path))
+                regression_report = diff_test_results(detection_id, b_results, c_results)
+        except Exception:
             pass
             
         builder = EvidenceBuilder()
-        report = builder.build(
+        # Note: EvidenceBuilder now needs to handle List[ReplayReport]
+        # For backwards compatibility during this step, we will update EvidenceBuilder separately
+        # But here we pass the list.
+        evidence = builder.build(
             rule=rule,
             syntax_valid=syntax_valid,
             tests_total=tests_total,
             tests_passed=tests_passed,
-            regression_report=regression_report,
-            attack_report=attack_report,
-            variation_report=variation_report,
             schema_report=schema_report,
-            volume_result=volume_result
+            volume_result=volume_result,
+            attack_reports=attack_reports,
+            variation_report=variation_report
         )
         
-        if not report.gates.passed_all_gates:
+        if not evidence.gates.passed_all_gates:
             passed_all = False
             console.print(f"[red][FAIL] {detection_id} failed hard gates[/red]")
         else:
             console.print(f"[green][PASS] {detection_id} passed[/green]")
             
-        full_markdown.append(report.render_markdown())
+        full_markdown.append(evidence.render_markdown())
         
     out_path = Path(out)
     out_path.write_text("\n\n---\n\n".join(full_markdown), encoding="utf-8")

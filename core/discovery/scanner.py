@@ -4,8 +4,9 @@ from pathlib import Path
 from typing import List
 import yaml
 
-from core.discovery.models import RuleInventory, ArtifactReference
+from core.discovery.models import RuleInventory, ArtifactReference, DiscoveryError
 from core.detection.models import DetectionRule
+from pydantic import ValidationError
 
 class RepositoryScanner:
     """Recursively discovers and classifies DRAVE artifacts."""
@@ -33,13 +34,20 @@ class RepositoryScanner:
                 continue
 
             try:
-                # Basic check before full parse
                 content = file_path.read_text(encoding="utf-8")
+            except Exception as e:
+                inventory.errors.append(DiscoveryError(
+                    relative_path=str(file_path.relative_to(self.workspace)).replace("\\", "/"),
+                    error_type="unreadable",
+                    message=f"Failed to read file: {e}"
+                ))
+                continue
                 
-                # Simple heuristic to avoid parsing massive unrelated JSON files
-                if '"id"' not in content and "id:" not in content and "detection_id" not in content and "technique" not in content:
-                    continue
+            # Simple heuristic to avoid parsing massive unrelated JSON files
+            if '"id"' not in content and "id:" not in content and "detection_id" not in content and "technique" not in content and "fixture_type" not in content:
+                continue
 
+            try:
                 if file_path.suffix == ".json":
                     import json
                     data = json.loads(content)
@@ -76,8 +84,11 @@ class RepositoryScanner:
                     try:
                         rule = DetectionRule(**data)
                         inventory.rules[rule.id] = rule
+                        inventory.rule_paths[rel_path] = rule.id
+                    except ValidationError as e:
+                        inventory.errors.append(DiscoveryError(relative_path=rel_path, error_type="invalid_schema", message=f"Rule validation failed: {e}"))
                     except Exception as e:
-                        pass # Ignore invalid rules
+                        inventory.errors.append(DiscoveryError(relative_path=rel_path, error_type="invalid_schema", message=f"Invalid rule: {e}"))
 
                 elif "test_id" in data and "input_telemetry" in data and "detection_id" in data:
                     # Test Case
@@ -94,9 +105,42 @@ class RepositoryScanner:
                         if det_id not in inventory.scenarios:
                             inventory.scenarios[det_id] = []
                         inventory.scenarios[det_id].append(ref)
+                        
+                elif "fixture_type" in data:
+                    # Schema-aware Fixture
+                    ftype = data["fixture_type"]
+                    fid = data.get("id", data.get("name", Path(rel_path).stem))
+                    ref = ArtifactReference(id=fid, relative_path=rel_path)
+                    
+                    det_id = data.get("detection_id")
+                    technique = data.get("technique")
+                    
+                    target_map = inventory.volume_fixtures if ftype == "volume" else inventory.variation_fixtures
+                    key = det_id if det_id else technique
+                    if key:
+                        if key not in target_map:
+                            target_map[key] = []
+                        target_map[key].append(ref)
+                    else:
+                        inventory.errors.append(DiscoveryError(relative_path=rel_path, error_type="unsupported", message="Fixture missing detection_id or technique"))
 
-            except Exception:
-                # Silently skip unparseable or irrelevant files
-                continue
+            except yaml.YAMLError as e:
+                inventory.errors.append(DiscoveryError(
+                    relative_path=str(file_path.relative_to(self.workspace)).replace("\\", "/"),
+                    error_type="unreadable",
+                    message=f"YAML parsing error: {e}"
+                ))
+            except json.JSONDecodeError as e:
+                inventory.errors.append(DiscoveryError(
+                    relative_path=str(file_path.relative_to(self.workspace)).replace("\\", "/"),
+                    error_type="unreadable",
+                    message=f"JSON parsing error: {e}"
+                ))
+            except Exception as e:
+                inventory.errors.append(DiscoveryError(
+                    relative_path=str(file_path.relative_to(self.workspace)).replace("\\", "/"),
+                    error_type="unsupported",
+                    message=f"Unexpected error during classification: {e}"
+                ))
 
         return inventory

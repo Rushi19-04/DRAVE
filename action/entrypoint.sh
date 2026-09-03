@@ -22,10 +22,18 @@ export DRAVE_API_KEY="$API_KEY"
 export API_BASE_URL="$API_URL"
 
 # ── Discover rule files ──
-RULE_FILES=$(find "$RULE_PATHS" -name '*.yml' -o -name '*.yaml' 2>/dev/null || true)
+if [ "${INPUT_BOOTSTRAP:-false}" = "true" ]; then
+  echo "Running in Bootstrap Mode: Discovering all rules..."
+  # Use python scanner to get all rule paths (using the engine environment)
+  RULE_FILES=$(cd /engine && uv run python -c "from core.discovery.scanner import RepositoryScanner; inv = RepositoryScanner('${GITHUB_WORKSPACE:-$PWD}').scan(); print('\n'.join(inv.rule_paths.keys()))")
+else
+  # Incremental Mode - currently relies on the user configuring RULE_PATHS 
+  # Future architecture will integrate natively with GitHub changed-files output.
+  RULE_FILES=$(find "$RULE_PATHS" -name '*.yml' -o -name '*.yaml' 2>/dev/null || true)
+fi
 
 if [ -z "$RULE_FILES" ]; then
-  echo "::warning::No YAML rule files found in $RULE_PATHS"
+  echo "::warning::No valid rules discovered."
   exit 0
 fi
 

@@ -53,19 +53,27 @@ def generate_evidence(rule: DetectionRule, workspace: str = "."):
 
     # Volume
     volume_result = None
-    sample_file = Path(workspace) / "fixtures/powershell/attack.json"
-    if sample_file.exists():
-        try:
-            estimator = VolumeEstimator()
-            sample_data = json.loads(sample_file.read_text(encoding="utf-8"))
-            if isinstance(sample_data, dict): sample_data = [sample_data]
-            est_vol = estimator.estimate(rule, sample_data, 1000)
-            volume_result = evaluate_volume_policy(rule, est_vol)
-        except Exception:
-            pass
+    vol_refs = inventory.volume_fixtures.get(rule.id, [])
+    if not vol_refs and rule.attack_mappings:
+        vol_refs = inventory.volume_fixtures.get(rule.attack_mappings[0], [])
+        
+    if vol_refs:
+        sample_file = Path(workspace) / vol_refs[0].relative_path
+        if sample_file.exists():
+            try:
+                estimator = VolumeEstimator()
+                sample_data = json.loads(sample_file.read_text(encoding="utf-8"))
+                if isinstance(sample_data, dict) and "events" in sample_data:
+                    sample_data = sample_data["events"]
+                elif isinstance(sample_data, dict): 
+                    sample_data = [sample_data]
+                est_vol = estimator.estimate(rule, sample_data, 1000)
+                volume_result = evaluate_volume_policy(rule, est_vol)
+            except Exception:
+                pass
 
     # Attack & Variations
-    attack_report = None
+    attack_reports = []
     variation_report = None
     
     scenario_refs = inventory.scenarios.get(rule.id, [])
@@ -85,24 +93,21 @@ def generate_evidence(rule: DetectionRule, workspace: str = "."):
                         loaded_telemetry.append(item)
                 scenario.telemetry = loaded_telemetry
                 engine = ReplayEngine()
-                attack_report = engine.replay(scenario)
-                break
+                attack_reports.append(engine.replay(scenario))
             except Exception:
                 pass
                 
-    if rule.attack_mappings:
-        technique = rule.attack_mappings[0]
-        v_dir = Path(workspace) / f"fixtures/{technique.lower().replace('.', '_')}"
-        if not v_dir.exists() and "powershell" in rule.name.lower():
-            v_dir = Path(workspace) / "fixtures/powershell"
-        if v_dir.exists():
-            variation_paths = [str(f) for f in v_dir.glob("*.json")]
-            if variation_paths:
-                calc = CoverageCalculator()
-                try:
-                    variation_report = calc.calculate(rule, variation_paths)
-                except Exception:
-                    pass
+    var_refs = inventory.variation_fixtures.get(rule.id, [])
+    if not var_refs and rule.attack_mappings:
+        var_refs = inventory.variation_fixtures.get(rule.attack_mappings[0], [])
+        
+    v_paths = [str(Path(workspace) / r.relative_path) for r in var_refs]
+    if v_paths:
+        calc = CoverageCalculator()
+        try:
+            variation_report = calc.calculate(rule, v_paths)
+        except Exception:
+            pass
 
     builder = EvidenceBuilder()
     return builder.build(
@@ -112,7 +117,7 @@ def generate_evidence(rule: DetectionRule, workspace: str = "."):
         tests_passed=tests_passed,
         schema_report=schema_report,
         volume_result=volume_result,
-        attack_report=attack_report,
+        attack_reports=attack_reports,
         variation_report=variation_report
     )
 
@@ -120,76 +125,78 @@ def load_yaml(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-def sync_rule(rule_path: str):
-    api_key = os.environ.get("DRAVE_API_KEY")
-    if not api_key:
-        print("Error: DRAVE_API_KEY environment variable is not set.")
-        sys.exit(1)
-
-    api_base_url = os.environ.get("API_BASE_URL", "http://127.0.0.1:8000")
-    
-    path = Path(rule_path)
-    if not path.exists():
-        print(f"Error: Rule file {rule_path} not found.")
-        sys.exit(1)
-
-    data = load_yaml(str(path))
-    # Ensure missing fields have defaults for MVP parsing
-    data["name"] = data.get("title", data.get("name", "Unknown"))
-    data["severity"] = data.get("level", data.get("severity", "low"))
-    if "tags" in data and "attack_mappings" not in data:
-        data["attack_mappings"] = [t.replace("attack.", "").upper() for t in data["tags"] if t.startswith("attack.t")]
-    data["language"] = data.get("language", "sigma")
-    data["platform"] = data.get("platform", "windows")
-    data["author"] = data.get("author", "unknown")
-    data["created_at"] = data.get("created_at", data.get("date", "2024-01-01T00:00:00Z"))
-    data["updated_at"] = data.get("updated_at", data.get("modified", "2024-01-01T00:00:00Z"))
-    if isinstance(data["created_at"], str) and "/" in data["created_at"]:
-        data["created_at"] = "2024-01-01T00:00:00Z"
-
-    if "query" not in data:
-        data["query"] = path.read_text(encoding="utf-8")
-
-    try:
-        rule = DetectionRule(**data)
-    except Exception as e:
-        print(f"Failed to parse DetectionRule from {rule_path}: {e}")
-        sys.exit(1)
-
-    print(f"Generating real Evidence Report for {rule.id}...")
-    workspace = os.environ.get("DRAVE_WORKSPACE", ".")
-    evidence = generate_evidence(rule, workspace)
-
-    payload = {
-        "rule": json.loads(rule.model_dump_json()),
-        "score": evidence.health_score,
-        "evidence": json.loads(evidence.model_dump_json())
-    }
-
-    url = f"{api_base_url}/api/v1/rules"
-    headers = {
-        "X-API-Key": api_key,
-        "Content-Type": "application/json"
-    }
-
-    print(f"Syncing {rule.id} to {url}...")
-    try:
-        resp = requests.post(url, json=payload, headers=headers)
-        if resp.status_code in (200, 201):
-            print(f"Successfully synced {rule.id}")
-            print(resp.json())
-        else:
-            print(f"Failed to sync {rule.id}. Status {resp.status_code}")
-            print(resp.text)
-            sys.exit(1)
-    except Exception as e:
-        print(f"Request failed: {e}")
-        sys.exit(1)
-
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python cli/sync.py <path_to_rule.yml>")
-        sys.exit(1)
+    import argparse
+    parser = argparse.ArgumentParser(description="Sync validation results to DRAVE API")
+    parser.add_argument("files", nargs="*", help="List of rule files to sync")
+    parser.add_argument("--bootstrap", action="store_true", help="Sync all discovered rules")
+    args = parser.parse_args()
     
-    rule_path = sys.argv[1]
-    sync_rule(rule_path)
+    workspace = os.environ.get("DRAVE_WORKSPACE", ".")
+    scanner = RepositoryScanner(workspace)
+    inventory = scanner.scan()
+    
+    rules_to_sync = []
+    
+    if args.bootstrap:
+        rules_to_sync = list(inventory.rules.values())
+        print(f"Bootstrap Mode: Syncing all {len(rules_to_sync)} discovered rules...")
+    else:
+        if not args.files:
+            print("Usage: python -m cli.sync <rule_file_path> OR --bootstrap")
+            sys.exit(1)
+            
+        for file_path in args.files:
+            p = Path(file_path)
+            try:
+                rel_path = str(p.resolve().relative_to(Path(workspace).resolve())).replace("\\", "/")
+            except ValueError:
+                rel_path = str(p).replace("\\", "/")
+                
+            if rel_path in inventory.rule_paths:
+                det_id = inventory.rule_paths[rel_path]
+                if det_id in inventory.rules:
+                    rules_to_sync.append(inventory.rules[det_id])
+            else:
+                print(f"Warning: {file_path} is not a valid discovered rule. Skipping sync.")
+                
+    if not rules_to_sync:
+        print("No rules to sync.")
+        sys.exit(0)
+
+    for rule in rules_to_sync:
+        print(f"Generating real Evidence Report for {rule.id}...")
+        evidence = generate_evidence(rule, workspace)
+
+        payload = {
+            "rule": json.loads(rule.model_dump_json()),
+            "evidence": json.loads(evidence.model_dump_json())
+        }
+        
+        # We wrap the payload matching the backend schema
+        api_payload = {
+            "rule": payload["rule"],
+            "score": evidence.health_score
+        }
+
+        api_url = os.environ.get("API_BASE_URL", "http://localhost:8000")
+        api_key = os.environ.get("DRAVE_API_KEY")
+
+        if not api_key:
+            print(f"DRAVE_API_KEY not set. Would have synced {rule.id}")
+            continue
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            resp = requests.post(f"{api_url}/api/v1/rules", json=api_payload, headers=headers)
+            resp.raise_for_status()
+            print(f"Successfully synced {rule.id} to DRAVE API.")
+        except requests.exceptions.RequestException as e:
+            print(f"Failed to sync {rule.id}. Error: {e}")
+            if e.response is not None:
+                print(f"Response: {e.response.text}")
+            sys.exit(1)

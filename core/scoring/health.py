@@ -18,7 +18,7 @@ class HealthCalculator:
         tests_total: int,
         tests_passed: int,
         regression_report: RegressionReport | None,
-        attack_report: AttackResult | None,
+        attack_reports: list[AttackResult] | None,
         variation_report: CoverageReport | None,
         schema_report: SchemaCompatibilityReport | None,
         volume_result: VolumePolicyResult | None
@@ -48,12 +48,13 @@ class HealthCalculator:
             applicable_weight += 15.0
             
         # 3. Attack Replay Pass Rate (15%)
-        if attack_report and attack_report.expected_detections:
-            expected = len(attack_report.expected_detections)
-            missed = len(attack_report.missed_detections)
-            attack_pct = (expected - missed) / expected
-            score += attack_pct * 15.0
-            applicable_weight += 15.0
+        if attack_reports:
+            total_expected = sum(len(rep.expected_detections) for rep in attack_reports if rep.expected_detections)
+            total_missed = sum(len(rep.missed_detections) for rep in attack_reports if rep.missed_detections)
+            if total_expected > 0:
+                attack_pct = (total_expected - total_missed) / total_expected
+                score += attack_pct * 15.0
+                applicable_weight += 15.0
             
         # 4. Variation/Robustness Coverage (20%)
         if variation_report and variation_report.total_variations > 0:

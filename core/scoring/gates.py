@@ -31,7 +31,7 @@ class GateEvaluator:
         self,
         syntax_valid: bool,
         tests_passed: bool,  # Simplified input from TestRunner
-        attack_report: AttackResult | None,
+        attack_reports: list[AttackResult] | None,
         schema_report: SchemaCompatibilityReport | None,
         volume_result: VolumePolicyResult | None
     ) -> GateResult:
@@ -43,12 +43,13 @@ class GateEvaluator:
         # 2. Unit Tests
         gate_tests = tests_passed
         
-        # 3. Attack Replay (No known attack missed)
+        # 3. Attack Replay (No known attack missed across ALL scenarios)
         gate_attack = True
-        if attack_report:
-            # Must detect everything we expect it to detect
-            if attack_report.missed_detections:
-                gate_attack = False
+        if attack_reports:
+            for rep in attack_reports:
+                if rep.missed_detections:
+                    gate_attack = False
+                    break
                 
         # 4. Schema Compatibility (No Risk == HIGH)
         gate_schema = True

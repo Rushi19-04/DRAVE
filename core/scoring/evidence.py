@@ -90,7 +90,7 @@ class EvidenceBuilder:
         tests_total: int,
         tests_passed: int,
         regression_report: RegressionReport | None = None,
-        attack_report: AttackResult | None = None,
+        attack_reports: list[AttackResult] | None = None,
         variation_report: CoverageReport | None = None,
         schema_report: SchemaCompatibilityReport | None = None,
         volume_result: VolumePolicyResult | None = None
@@ -101,7 +101,7 @@ class EvidenceBuilder:
         gates = gate_evaluator.evaluate(
             syntax_valid=syntax_valid,
             tests_passed=(tests_passed == tests_total and tests_total > 0),
-            attack_report=attack_report,
+            attack_reports=attack_reports,
             schema_report=schema_report,
             volume_result=volume_result
         )
@@ -111,7 +111,7 @@ class EvidenceBuilder:
             tests_total=tests_total,
             tests_passed=tests_passed,
             regression_report=regression_report,
-            attack_report=attack_report,
+            attack_reports=attack_reports,
             variation_report=variation_report,
             schema_report=schema_report,
             volume_result=volume_result
@@ -128,8 +128,8 @@ class EvidenceBuilder:
             schema_compatibility_pct=schema_report.compatibility_pct if schema_report else None,
             volume_status=volume_result.status if volume_result else None,
             volume_message=volume_result.message if volume_result else None,
-            attack_expected=len(attack_report.expected_detections) if attack_report and attack_report.expected_detections else None,
-            attack_missed=len(attack_report.missed_detections) if attack_report and attack_report.missed_detections else None,
+            attack_expected=sum(len(rep.expected_detections) for rep in attack_reports if rep.expected_detections) if attack_reports else None,
+            attack_missed=sum(len(rep.missed_detections) for rep in attack_reports if rep.missed_detections) if attack_reports else None,
             robustness_score=variation_report.coverage_score if variation_report else None,
             regression_total=regression_report.total_tests if regression_report else None,
             regressions_found=regression_report.regressions if regression_report else None
