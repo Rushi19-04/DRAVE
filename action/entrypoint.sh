@@ -78,7 +78,7 @@ for file in $RULE_FILES; do
   # Step 2: Sync to DRAVE SaaS API (real evidence, not hardcoded)
   echo "  → Syncing evidence to DRAVE API..."
   export DRAVE_WORKSPACE="$WORKSPACE_DIR"
-  if (cd /engine && uv run python -m cli.sync "$ABS_PATH"); then
+  if (cd /engine && uv run python -m cli.sync "$ABS_PATH" > "$WORKSPACE_DIR/api_sync_$TOTAL.log" 2>&1); then
     SYNCED=$((SYNCED + 1))
     echo "✅ Synced $file to DRAVE API"
   else
