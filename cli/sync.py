@@ -187,7 +187,7 @@ if __name__ == "__main__":
             continue
 
         headers = {
-            "Authorization": f"Bearer {api_key}",
+            "X-API-Key": api_key,
             "Content-Type": "application/json"
         }
 
