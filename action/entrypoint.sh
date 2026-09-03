@@ -27,9 +27,14 @@ if [ "${INPUT_BOOTSTRAP:-false}" = "true" ]; then
   # Use python scanner to get all rule paths (using the engine environment)
   RULE_FILES=$(cd /engine && uv run python -c "from core.discovery.scanner import RepositoryScanner; inv = RepositoryScanner('${GITHUB_WORKSPACE:-$PWD}').scan(); print('\n'.join(inv.rule_paths.keys()))")
 else
-  # Incremental Mode - currently relies on the user configuring RULE_PATHS 
-  # Future architecture will integrate natively with GitHub changed-files output.
-  RULE_FILES=$(find "$RULE_PATHS" -name '*.yml' -o -name '*.yaml' 2>/dev/null || true)
+  echo "Running in Incremental Mode: Resolving affected rules via Git Diff..."
+  RULE_FILES=$(cd /engine && uv run python -m cli.incremental --workspace "${GITHUB_WORKSPACE:-$PWD}")
+  
+  if [ -z "$RULE_FILES" ]; then
+    echo "0 affected rules found based on git diff."
+    echo "::notice::No detection rules require validation for this commit."
+    exit 0
+  fi
 fi
 
 if [ -z "$RULE_FILES" ]; then

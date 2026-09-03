@@ -130,3 +130,59 @@ def test_scenario_aggregation_gates():
     )
     assert res_fail.no_known_attack_missed is False
     assert res_fail.passed_all_gates is False
+
+def test_incremental_resolver():
+    from core.discovery.incremental import IncrementalResolver
+    from core.discovery.diff import ChangedFile, DiffRange
+    from core.detection.models import DetectionRule
+    
+    inventory = RuleInventory()
+    inventory.rules["rule-1"] = DetectionRule.model_construct(id="rule-1", name="R1", attack_mappings=[])
+    inventory.rules["rule-2"] = DetectionRule.model_construct(id="rule-2", name="R2", attack_mappings=[])
+    inventory.rule_paths["rules/rule1.yml"] = "rule-1"
+    inventory.rule_paths["rules/rule2.yml"] = "rule-2"
+    
+    inventory.tests["rule-1"] = [ArtifactReference(id="t1", relative_path="tests/t1.yml")]
+    inventory.scenarios["rule-2"] = [ArtifactReference(id="s1", relative_path="scenarios/s1.yml")]
+    inventory.volume_fixtures["rule-1"] = [ArtifactReference(id="v1", relative_path="fixtures/v1.json")]
+    
+    # Mock diff provider that only returns content for a deleted test
+    class MockDiffProvider:
+        def get_file_content_at_commit(self, path, commit):
+            if path == "tests/deleted_test.yml":
+                return '{"test_id": "t2", "detection_id": "rule-2"}'
+            return None
+            
+    resolver = IncrementalResolver(inventory, MockDiffProvider())
+    diff_range = DiffRange(before="123", after="456")
+    
+    # 1. Rule changed -> 1 rule
+    res = resolver.resolve(diff_range, [ChangedFile(path="rules/rule1.yml", status="M")])
+    assert res == {"rule-1"}
+    
+    # 2. Test changed -> associated rule
+    res = resolver.resolve(diff_range, [ChangedFile(path="tests/t1.yml", status="A")])
+    assert res == {"rule-1"}
+    
+    # 3. Scenario changed -> all expected rules
+    res = resolver.resolve(diff_range, [ChangedFile(path="scenarios/s1.yml", status="M")])
+    assert res == {"rule-2"}
+    
+    # 4. Fixture changed -> associated rule
+    res = resolver.resolve(diff_range, [ChangedFile(path="fixtures/v1.json", status="M")])
+    assert res == {"rule-1"}
+    
+    # 5. README modified -> 0 rules
+    res = resolver.resolve(diff_range, [ChangedFile(path="README.md", status="M")])
+    assert res == set()
+    
+    # 6. Two rules modified -> 2 rules
+    res = resolver.resolve(diff_range, [
+        ChangedFile(path="rules/rule1.yml", status="M"),
+        ChangedFile(path="rules/rule2.yml", status="M")
+    ])
+    assert res == {"rule-1", "rule-2"}
+    
+    # 7. Deleted test -> associated rule still resolved
+    res = resolver.resolve(diff_range, [ChangedFile(path="tests/deleted_test.yml", status="D")])
+    assert res == {"rule-2"}
